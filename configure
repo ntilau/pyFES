@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# pyFES — setup script
+# Creates a virtual environment, installs dependencies, and
+# copies mesh data files from the FESmat archive.
+#
+# Usage:
+#   ./setup.sh                # fresh setup
+#   ./setup.sh /path/to/FESmat.zip  # include mesh data from MATLAB archive
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+VENV="$HERE/.venv"
+
+echo "=== pyFES setup ==="
+
+# 1. Create virtual environment
+if [ ! -d "$VENV" ]; then
+    echo "Creating virtual environment ..."
+    python3 -m venv "$VENV"
+fi
+
+echo "Installing package + dependencies ..."
+"$VENV/bin/pip" install --quiet --upgrade pip
+"$VENV/bin/pip" install --quiet -e "$HERE"
+"$VENV/bin/pip" install --quiet pytest
+
+# 2. Optional: extract mesh data from FESmat.zip
+if [ -n "${1:-}" ] && [ -f "$1" ]; then
+    echo "Extracting mesh data from $1 ..."
+    TMP="/tmp/pyfes_meshes_$$"
+    unzip -q -o "$1" -d "$TMP" 2>/dev/null || unzip -q -o "$1" "FESmat/FEpre/*" -d "$TMP"
+    if [ -d "$TMP/FESmat/FEpre" ]; then
+        mkdir -p "$HERE/data"
+        cp -r "$TMP/FESmat/FEpre/"* "$HERE/data/"
+        echo "Mesh data copied to $HERE/data/"
+    fi
+    rm -rf "$TMP"
+else
+    echo "No FESmat archive provided — skip mesh data."
+    echo "  Use:  $0 /path/to/FESmat.zip"
+    echo "  or manually place .poly and .h1.mat files in data/"
+fi
+
+# 3. Verify
+echo "Verifying installation ..."
+"$VENV/bin/python" -c "from pyfes import constants; print(f'pyFES v{__import__(\"importlib.metadata\").metadata.version(\"pyfes\")} OK')"
+
+# 4. Hint
+if [ -d "$HERE/data" ] && [ -n "$(ls "$HERE/data"/*.poly 2>/dev/null)" ]; then
+    echo "Mesh files found in data/ — projects are ready to run."
+    echo "  $VENV/bin/python -c 'from pyfes.projects import run_waveguide; run_waveguide()'"
+else
+    echo "No mesh files found. Either:"
+    echo "  ./setup.sh /path/to/FESmat.zip"
+    echo "  or place .poly/.mat files in data/ yourself."
+fi
+
+echo "=== done ==="

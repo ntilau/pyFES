@@ -1,0 +1,123 @@
+# pyFES
+
+Python Finite Element Solver for electromagnetics. Ported from the [FESmat MATLAB codebase](https://github.com/ntilau/mFES).
+
+Solves 2D Helmholtz / scalar wave / electrostatic / thermal problems on triangular meshes, with support for waveguide ports, domain decomposition (Schur complements), harmonic balance (Kerr nonlinearity), and ferrite circulators.
+
+## Quick start
+
+```bash
+# Virtual environment + install
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+
+# Or using setup.sh (copies mesh data from FESmat archive, if available)
+./configure
+```
+
+## Run a project
+
+```python
+import numpy as np
+from pyfes.projects import run_waveguide, bilateral_filter
+from pyfes.post.plot import plot_field
+from scipy import sparse
+
+# Full S-parameter sweep
+freqs, Sparams = bilateral_filter(n_freqs=41)
+
+# Single-frequency field plot
+sys, mesh = run_waveguide()
+plot_field(sys, mesh, field="u", component="abs", cmap="jet")
+```
+
+Or from the command line:
+
+```bash
+python -c "from pyfes.projects import run_waveguide; run_waveguide()"
+```
+
+## Projects
+
+| Function | Description | MATLAB original |
+|---|---|---|
+| `run_electrostatics` | Electrostatic potential | `ProjectElectrostatics.m` |
+| `run_waveguide` | Rectangular waveguide S-parameters | `ProjectWaveGuide.m` |
+| `modal_analysis_rectangular` | TE mode cutoff frequencies | `ProjectModalAnalysis.m` |
+| `modal_analysis_open_strip` | Open microstrip analysis | `ProjectModalAnalysis.m` |
+| `bilateral_filter` | Finline filter frequency response | `ProjectBilateralFilter.m` |
+| `bilateral_filter_hb` | Harmonic balance (Kerr nonlinearity) | `ProjectBilateralFilterHB.m` |
+| `two_post_filter` | Two-post waveguide filter | `ProjectTwoPostFilter.m` |
+| `two_post_filter_hb` | Two-post filter harmonic balance | — |
+| `circulator` | Ferrite circulator S-parameters | `ProjectCirculator.m` |
+| `circulator_imp` | Intermodulation products | `ProjectCirculatorIMP.m` |
+| `circulator_ddschur` | DD Schur complement circulator | `ProjectCirculatorDDschur.m` |
+| `scattering_dd` | Wave scattering with ABC | `ProjectWaveScatteringDD.m` |
+| `scattering_dd_iterative` | Iterative Schwarz DD solver | `ProjectWaveScatteringDD.m` |
+| `scattering_full_field` | Full-wave scattering | — |
+| `thermal_distribution` | Heat conduction | `ProjectThermalDistro.m` |
+| `thermal_distribution_dg` | Discontinuous Galerkin heat | — |
+| `coaxial_capacitance` | Coax cable capacitance | `PrjCableParassitics.m` |
+| `capacitive_clearance` | Capacitive sensor | `ProjectCapacitiveClearance.m` |
+
+## Mesh generation (`.poly` → `.h1.mat`)
+
+`.poly` files are geometry descriptions for the [Triangle](https://www.cs.cmu.edu/~quake/triangle.html) mesh generator. The `iormesh/` directory contains a C tool (`IOrMesh`) that runs Triangle and writes `.h1.mat` files consumed by the Python solver.
+
+```bash
+# Build the IOrMesh binary
+make build
+
+# List .poly files that still need meshing
+make list
+
+# Mesh a single file (with overridable Triangle arguments)
+make data/WaveGuide.h1.mat ARGS="q34A"
+
+# Mesh all missing .poly files
+make all
+
+# Re-mesh everything (overwrite existing .h1.mat)
+make rebuild
+```
+
+Default Triangle arguments: `q34A` (quality mesh, 34° min angle, region attributes). Override per-file with `ARGS="q34a0.01A"`.
+
+## Requirements
+
+- Python 3.9+
+- numpy, scipy, matplotlib, pyvista
+- C++ compiler (for `make build` to compile `IOrMesh`)
+
+## Structure
+
+| Path | Description |
+|---|---|
+| `pyfes/constants.py` | Physical constants (c₀, Z₀, ε₀, μ₀) |
+| `pyfes/fem/shape_functions.py` | Scalar Lagrange (orders 1–4), H(curl) vector basis |
+| `pyfes/fem/quadrature.py` | Gauss–Legendre on [0,1] and Duffy-transformed simplices |
+| `pyfes/fem/jacobian.py` | Jacobian determinant / inverse transpose for triangles |
+| `pyfes/fem/dof.py` | Global DOF numbering and hierarchical basis indices |
+| `pyfes/fem/boundary.py` | Boundary DOF maps for domain decomposition |
+| `pyfes/fem/assembly.py` | S/T/St/Tt/G matrix assembly, waveguide ports, BCs |
+| `pyfes/fem/harmonic_balance.py` | Harmonic balance (Kerr nonlinearity, ferrite) |
+| `pyfes/mesh/io_poly.py` | Triangle .poly I/O and .h1.mat reader (MATLAB v5 format) |
+| `pyfes/mesh/build.py` | Regular triangular meshes on the unit square |
+| `pyfes/mesh/plot.py` | Matplotlib mesh / geometry plotting |
+| `pyfes/post/plot.py` | pyVista-based in-process field rendering |
+| `pyfes/projects/` | Simulation examples (18 projects) |
+| `iormesh/` | C mesher (Triangle wrapper, MATLAB .mat exporter) |
+| `data/` | `.poly` geometry files and `.h1.mat` mesh files |
+| `tests/` | pytest suite |
+
+## Tests
+
+```bash
+pytest tests/ -v
+```
+
+## Related
+
+- [ntilau/mFES](https://github.com/ntilau/mFES) — original MATLAB codebase
+- [Triangle](https://www.cs.cmu.edu/~quake/triangle.html) — Jonathan Shewchuk's Delaunay triangulator

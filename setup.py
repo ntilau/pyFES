@@ -1,0 +1,35 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="pyfes",
+    version="0.1.0",
+    packages=find_packages(),
+    install_requires=[
+        "numpy>=1.20",
+        "scipy>=1.7",
+        "matplotlib>=3.4",
+        "pyvista>=0.48",
+    ],
+    python_requires=">=3.9",
+    description="2D finite element solver for electromagnetics — waveguide, filter, circulator, and thermal simulation on triangular meshes",
+    keywords="fem, finite-elements, electromagnetics, waveguide, circulator, harmonic-balance, scipy, triangle-mesh",
+    long_description=open("README.md").read() if __import__("os").path.exists("README.md") else "",
+    long_description_content_type="text/markdown",
+    url="https://github.com/ntilau/pyFES",
+    classifiers=[
+        "Development Status :: 4 - Beta",
+        "Intended Audience :: Science/Research",
+        "Intended Audience :: Education",
+        "License :: Free for non-commercial use",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Programming Language :: C",
+        "Topic :: Scientific/Engineering :: Physics",
+        "Topic :: Scientific/Engineering :: Mathematics",
+        "Topic :: Scientific/Engineering :: Visualization",
+    ],
+)
