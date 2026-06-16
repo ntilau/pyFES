@@ -84,13 +84,15 @@ def build_regular_square(nptsx, nptsy):
         nodes = np.sort(ele[ie, :])
         for i in range(3):
             snodes = sorted([nodes[i], nodes[(i + 1) % 3]])
+            is_boundary_edge = False
+            if nlab[snodes[0]] == 1 and nlab[snodes[1]] == 1:
+                x0, y0 = node[snodes[0]]
+                x1, y1 = node[snodes[1]]
+                is_boundary_edge = ((x0 == 0 and x1 == 0) or (x0 == 1 and x1 == 1)
+                                    or (y0 == 0 and y1 == 0) or (y0 == 1 and y1 == 1))
             if not tspig:
                 tspig.append(snodes)
-                if (nlab[snodes[0]] == 1 and nlab[snodes[1]] == 1
-                        and np.sum(np.abs(np.diff(node[snodes, :], axis=0))) == 0):
-                    slab.append(1)
-                else:
-                    slab.append(0)
+                slab.append(1 if is_boundary_edge else 0)
             else:
                 found = False
                 for e in tspig:
@@ -102,11 +104,7 @@ def build_regular_square(nptsx, nptsy):
                         break
                 if not found:
                     tspig.append(snodes)
-                    if (nlab[snodes[0]] == 1 and nlab[snodes[1]] == 1
-                            and np.sum(np.abs(np.diff(node[snodes, :], axis=0))) == 0):
-                        slab.append(1)
-                    else:
-                        slab.append(0)
+                    slab.append(1 if is_boundary_edge else 0)
 
     spig2 = np.array(tspig, dtype=int)
     NSPIG = len(spig2)

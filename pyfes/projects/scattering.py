@@ -27,7 +27,7 @@ def _apply_scattering_bcs(A, B_mat, sys):
     rhs = np.zeros(sys["NDOFs"], dtype=complex)
     if "Dir_0" in sys:
         dir_dofs = sys["Dir_0"]
-        rhs = B_mat[:, dir_dofs].toarray().ravel() * sys["fsEinc"][dir_dofs]
+        rhs = B_mat[:, dir_dofs].dot(sys["fsEinc"][dir_dofs])
         rhs[dir_dofs] = -sys["fsEinc"][dir_dofs]
         A = A.tolil()
         A[dir_dofs, :] = 0

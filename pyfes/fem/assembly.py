@@ -249,7 +249,7 @@ def assemble_linear(sys, mesh):
                         -16 * x[1] * x[2] + 4 * x[2]**2 + 4 * x[1]**2,
                         16 * x[0] * x[2] - 4 * x[2]**2 - 4 * x[0]**2,
                         -16 * x[1] * x[0] + 4 * x[1]**2 + 4 * x[0]**2
-                    ]) * (dx[1, 2] * dx[2, 3] - dx[2, 2] * dx[1, 3])
+                    ]) * (dx[0, 1] * dx[1, 2] - dx[1, 1] * dx[0, 2])
                 else:
                     raise ValueError(f"Vector shape functions not implemented for order {p_ord}")
 
@@ -371,11 +371,10 @@ def assemble_linear(sys, mesh):
 
                         Inc = (np.dot(v, v - np.cross(n_3d, np.cross(k_einc_3d, v)))
                                * np.exp(-1j * k * np.dot(
-                                   np.outer(k_einc, np.ones(p_ord + 1)),
-                                   rho[:, :2].T
+                                   rho[:, :2], k_einc
                                )))
 
-                        frBC = np.zeros(p_ord + 1)
+                        frBC = np.zeros(p_ord + 1, dtype=complex)
                         for iq in range(len(wq1)):
                             frBC += l * ns1[iq] * Inc[iq] * wq1[iq]
 
@@ -455,11 +454,10 @@ def assemble_linear(sys, mesh):
                         ])
                         dEinc = (-1j * k * np.dot(k_einc, n_vec)
                                  * np.exp(-1j * k * np.dot(
-                                     np.outer(k_einc, np.ones(p_ord + 1)),
-                                     rho[:, :2].T
+                                     rho[:, :2], k_einc
                                  )))
 
-                        frBC = np.zeros(p_ord + 1)
+                        frBC = np.zeros(p_ord + 1, dtype=complex)
                         for iq in range(len(wq1)):
                             frBC += l * ns1[iq] * dEinc[iq] * wq1[iq]
 
@@ -516,7 +514,7 @@ def assemble_linear(sys, mesh):
                         l_vec = np.diff(mesh["node"][node_id, :], axis=0).ravel()
                         l = np.linalg.norm(l_vec)
 
-                        frBC = np.zeros(p_ord + 1)
+                        frBC = np.zeros(p_ord + 1, dtype=complex)
                         for iq in range(len(wq1)):
                             frBC += l * ns1[iq] * wq1[iq]
 

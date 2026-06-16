@@ -54,29 +54,29 @@ def modal_analysis_rectangular(a=22.86e-3, b=10.16e-3, p_ord=3,
     dir_dofs = sys.get("Dir_0", np.array([], dtype=int))
 
     # For vector problem: Dirichlet removes boundary DOFs
-    # Find the scalar Dirichlet DOFs and map to vector
-    slab_zero = np.where(mesh["slab"] == 0)[0]  # non-Dirichlet edges
+    # slab is already 0-based; slab_zero gives interior edge indices directly
+    slab_zero = np.where(mesh["slab"] == 0)[0]
     if sys["pOrd"] == 1:
-        vec_free = slab_zero - 1  # 0-based
+        vec_free = slab_zero
     elif sys["pOrd"] == 2:
         vec_free = np.concatenate([
-            slab_zero - 1,
-            mesh["NSPIG"] + slab_zero - 1,
+            slab_zero,
+            mesh["NSPIG"] + slab_zero,
             np.arange(2 * mesh["NSPIG"], 2 * mesh["NSPIG"] + 2 * mesh["NELE"])
         ])
     elif sys["pOrd"] == 3:
         vec_free = np.concatenate([
-            slab_zero - 1,
-            mesh["NSPIG"] + slab_zero - 1,
+            slab_zero,
+            mesh["NSPIG"] + slab_zero,
             np.arange(2 * mesh["NSPIG"], 2 * mesh["NSPIG"] + 2 * mesh["NELE"]),
-            2 * mesh["NSPIG"] + 2 * mesh["NELE"] + slab_zero - 1,
+            2 * mesh["NSPIG"] + 2 * mesh["NELE"] + slab_zero,
             np.arange(3 * mesh["NSPIG"] + 2 * mesh["NELE"],
                       3 * mesh["NSPIG"] + 6 * mesh["NELE"])
         ])
     else:
         vec_free = np.arange(Ste.shape[0])
 
-    vec_free = vec_free[vec_free < Ste.shape[0]]
+    vec_free = vec_free[(vec_free >= 0) & (vec_free < Ste.shape[0])]
     Tte_sub = Tte[vec_free, :][:, vec_free]
     Ste_sub = Ste[vec_free, :][:, vec_free]
 
@@ -112,26 +112,26 @@ def modal_analysis_open_strip():
 
     slab_zero = np.where(mesh["slab"] == 0)[0]
     if sys["pOrd"] == 1:
-        vec_free = slab_zero - 1
+        vec_free = slab_zero
     elif sys["pOrd"] == 2:
         vec_free = np.concatenate([
-            slab_zero - 1,
-            mesh["NSPIG"] + slab_zero - 1,
+            slab_zero,
+            mesh["NSPIG"] + slab_zero,
             np.arange(2 * mesh["NSPIG"], 2 * mesh["NSPIG"] + 2 * mesh["NELE"])
         ])
     elif sys["pOrd"] == 3:
         vec_free = np.concatenate([
-            slab_zero - 1,
-            mesh["NSPIG"] + slab_zero - 1,
+            slab_zero,
+            mesh["NSPIG"] + slab_zero,
             np.arange(2 * mesh["NSPIG"], 2 * mesh["NSPIG"] + 2 * mesh["NELE"]),
-            2 * mesh["NSPIG"] + 2 * mesh["NELE"] + slab_zero - 1,
+            2 * mesh["NSPIG"] + 2 * mesh["NELE"] + slab_zero,
             np.arange(3 * mesh["NSPIG"] + 2 * mesh["NELE"],
                       3 * mesh["NSPIG"] + 6 * mesh["NELE"])
         ])
     else:
         vec_free = np.arange(sys["St"].shape[0])
 
-    vec_free = vec_free[vec_free < sys["St"].shape[0]]
+    vec_free = vec_free[(vec_free >= 0) & (vec_free < sys["St"].shape[0])]
     Tte_sub = sys["Tt"][vec_free, :][:, vec_free]
     Ste_sub = sys["St"][vec_free, :][:, vec_free]
 

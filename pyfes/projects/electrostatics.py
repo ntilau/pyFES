@@ -35,19 +35,21 @@ def run_electrostatics():
     if "Dir_0" in sys:
         dir_dofs = sys["Dir_0"]
         b = b - A[:, dir_dofs].dot(np.ones(len(dir_dofs))) * sys["V"][0]
-        A = A.copy()
+        A = A.tolil()
         A[dir_dofs, :] = 0
         A[:, dir_dofs] = 0
-        A[dir_dofs, dir_dofs] = sparse.eye(len(dir_dofs))
+        A[dir_dofs, dir_dofs] = 1.0
+        A = A.tocsr()
         b[dir_dofs] = sys["V"][0]
 
     if "Dir_1" in sys:
         dir_dofs = sys["Dir_1"]
         b = b - A[:, dir_dofs].dot(np.ones(len(dir_dofs))) * sys["V"][1]
-        A = A.copy()
+        A = A.tolil()
         A[dir_dofs, :] = 0
         A[:, dir_dofs] = 0
-        A[dir_dofs, dir_dofs] = sparse.eye(len(dir_dofs))
+        A[dir_dofs, dir_dofs] = 1.0
+        A = A.tocsr()
         b[dir_dofs] = sys["V"][1]
 
     sys["u"] = spsolve(A, b)
