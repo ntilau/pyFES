@@ -1,6 +1,6 @@
 # pyFES
 
-Python Finite Element Solver for electromagnetics. Ported from the [FESmat MATLAB codebase](https://github.com/ntilau/mFES).
+Python Finite Element Solver for electromagnetics.
 
 Solves 2D Helmholtz / scalar wave / electrostatic / thermal problems on triangular meshes, with support for waveguide ports, domain decomposition (Schur complements), harmonic balance (Kerr nonlinearity), and ferrite circulators.
 
@@ -12,7 +12,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 
-# Or using setup.sh (copies mesh data from FESmat archive, if available)
+# Or using setup.sh
 ./configure
 ```
 
@@ -40,26 +40,26 @@ python -c "from pyfes.projects import run_waveguide; run_waveguide()"
 
 ## Projects
 
-| Function | Description | MATLAB original |
-|---|---|---|
-| `run_electrostatics` | Electrostatic potential | `ProjectElectrostatics.m` |
-| `run_waveguide` | Rectangular waveguide S-parameters | `ProjectWaveGuide.m` |
-| `modal_analysis_rectangular` | TE mode cutoff frequencies | `ProjectModalAnalysis.m` |
-| `modal_analysis_open_strip` | Open microstrip analysis | `ProjectModalAnalysis.m` |
-| `bilateral_filter` | Finline filter frequency response | `ProjectBilateralFilter.m` |
-| `bilateral_filter_hb` | Harmonic balance (Kerr nonlinearity) | `ProjectBilateralFilterHB.m` |
-| `two_post_filter` | Two-post waveguide filter | `ProjectTwoPostFilter.m` |
-| `two_post_filter_hb` | Two-post filter harmonic balance | — |
-| `circulator` | Ferrite circulator S-parameters | `ProjectCirculator.m` |
-| `circulator_imp` | Intermodulation products | `ProjectCirculatorIMP.m` |
-| `circulator_ddschur` | DD Schur complement circulator | `ProjectCirculatorDDschur.m` |
-| `scattering_dd` | Wave scattering with ABC | `ProjectWaveScatteringDD.m` |
-| `scattering_dd_iterative` | Iterative Schwarz DD solver | `ProjectWaveScatteringDD.m` |
-| `scattering_full_field` | Full-wave scattering | — |
-| `thermal_distribution` | Heat conduction | `ProjectThermalDistro.m` |
-| `thermal_distribution_dg` | Discontinuous Galerkin heat | — |
-| `coaxial_capacitance` | Coax cable capacitance | `PrjCableParassitics.m` |
-| `capacitive_clearance` | Capacitive sensor | `ProjectCapacitiveClearance.m` |
+| Function | Description |
+|---|---|
+| `run_electrostatics` | Electrostatic potential |
+| `run_waveguide` | Rectangular waveguide S-parameters |
+| `modal_analysis_rectangular` | TE mode cutoff frequencies |
+| `modal_analysis_open_strip` | Open microstrip analysis |
+| `bilateral_filter` | Finline filter frequency response |
+| `bilateral_filter_hb` | Harmonic balance (Kerr nonlinearity) |
+| `two_post_filter` | Two-post waveguide filter |
+| `two_post_filter_hb` | Two-post filter harmonic balance |
+| `circulator` | Ferrite circulator S-parameters |
+| `circulator_imp` | Intermodulation products |
+| `circulator_ddschur` | DD Schur complement circulator |
+| `scattering_dd` | Wave scattering with ABC |
+| `scattering_dd_iterative` | Iterative Schwarz DD solver |
+| `scattering_full_field` | Full-wave scattering |
+| `thermal_distribution` | Heat conduction |
+| `thermal_distribution_dg` | Discontinuous Galerkin heat |
+| `coaxial_capacitance` | Coax cable capacitance |
+| `capacitive_clearance` | Capacitive sensor |
 
 ## Mesh generation (`.poly` → `.h1.mat`)
 
@@ -119,5 +119,4 @@ pytest tests/ -v
 
 ## Related
 
-- [ntilau/mFES](https://github.com/ntilau/mFES) — original MATLAB codebase
 - [Triangle](https://www.cs.cmu.edu/~quake/triangle.html) — Jonathan Shewchuk's Delaunay triangulator

@@ -781,9 +781,9 @@ def assemble_waveguide_port(sys, freq):
     II = A[nn_wp, :][:, nn_wp]
 
     sys["A"] = sparse.bmat([
-        [sparse.csr_matrix(PP), sparse.csr_matrix(PI)],
-        [sparse.csr_matrix(IP), sparse.csr_matrix(II)]
-    ], format="csr")
+        [sparse.csc_matrix(PP), sparse.csc_matrix(PI)],
+        [sparse.csc_matrix(IP), sparse.csc_matrix(II)]
+    ], format="csc")
 
     # RHS
     B = np.zeros((n_rhs + len(nn_wp), n_rhs), dtype=complex)
@@ -796,7 +796,7 @@ def assemble_waveguide_port(sys, freq):
         idx = slice(ip * wp_n_modes, (ip + 1) * wp_n_modes)
         B[idx, idx] = 1j * k0 * sys["z0"] * 2 * wp_pow @ np.eye(wp_n_modes)
 
-    sys["B"] = sparse.csr_matrix(B)
+    sys["B"] = sparse.csc_matrix(B)
 
     # nWP for field reconstruction
     sys["nWP"] = [np.arange(ip * wp_n_modes, (ip + 1) * wp_n_modes)

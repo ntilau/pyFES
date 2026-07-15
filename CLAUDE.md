@@ -4,18 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-pyFES — Python Finite Element Solver for electromagnetics. Ported from FESmat (MATLAB).
+pyFES — Python Finite Element Solver for electromagnetics.
 
 ## Commands
 
 - Run all tests: `python -m pytest tests/ -v`
 - Run a single test: `python -m pytest tests/test_core.py::TestShapeFunctions::test_2d_linear -v`
 - Install in editable mode: `python -m pip install -e .`
-- Activate venv: `source .venv/bin/activate` (or `/Users/ntilau/Repos/pyFES/.venv/bin/python`)
+- Activate venv: `source .venv/bin/activate` (or `python -m pytest`) — venv is at `$CWD/.venv/`
 
 ## Architecture
 
-The package mirrors the original FESmat MATLAB structure:
+Package structure:
 
 - `pyfes/constants.py` — Physical constants (c0, z0, eps0, mu0) and utility functions (dB conversion, phase unwrap)
 - `pyfes/mesh/` — Mesh generation, I/O, and visualization
