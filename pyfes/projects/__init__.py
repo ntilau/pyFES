@@ -11,3 +11,4 @@ from .filter_design import (
 from .capacitive import coaxial_capacitance, capacitive_clearance
 from .circulator import circulator, circulator_imp, circulator_ddschur
 from .scattering import scattering_dd, scattering_dd_iterative, scattering_full_field
+from .filter_dnngp import bilateral_filter_dnngp, BilateralFilterDNNGP
