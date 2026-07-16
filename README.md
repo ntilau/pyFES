@@ -38,6 +38,28 @@ Or from the command line:
 python -c "from pyfes.projects import run_waveguide; run_waveguide()"
 ```
 
+### DNN-GP surrogate model
+
+```python
+from pyfes.projects import bilateral_filter_dnngp
+
+# Train from pre-generated .mat data (50 epsr x 81 freq)
+model, metrics = bilateral_filter_dnngp(
+    mat_file="bilat_all_sparams_50epsr.mat", n_epochs=500,
+)
+print(f"S11 error: {metrics['s11_rel_pct']:.2f}%")
+
+# Predict S-parameters at new (epsr, freq) points
+import numpy as np
+X_new = np.column_stack([np.full(81, 2.15),
+                         np.linspace(138e9, 158e9, 81)])
+s11_pred, s21_pred = model.predict(X_new)
+
+# Load a saved checkpoint
+from pyfes.projects.filter_dnngp import BilateralFilterDNNGP
+model = BilateralFilterDNNGP().load("bilat_dnngp.pt")
+```
+
 ## Projects
 
 | Function | Description |
@@ -60,6 +82,7 @@ python -c "from pyfes.projects import run_waveguide; run_waveguide()"
 | `thermal_distribution_dg` | Discontinuous Galerkin heat |
 | `coaxial_capacitance` | Coax cable capacitance |
 | `capacitive_clearance` | Capacitive sensor |
+| `bilateral_filter_dnngp` | DNN-GP surrogate model for S-parameters |
 
 ## Mesh generation (`.poly` → `.h1.mat`)
 
@@ -88,6 +111,7 @@ Default Triangle arguments: `q34A` (quality mesh, 34° min angle, region attribu
 
 - Python 3.9+
 - numpy, scipy, matplotlib, pyvista
+- torch, gpytorch, scikit-learn (for DNN-GP surrogate)
 - C++ compiler (for `make build` to compile `IOrMesh`)
 
 ## Structure
@@ -106,7 +130,8 @@ Default Triangle arguments: `q34A` (quality mesh, 34° min angle, region attribu
 | `pyfes/mesh/build.py` | Regular triangular meshes on the unit square |
 | `pyfes/mesh/plot.py` | Matplotlib mesh / geometry plotting |
 | `pyfes/post/plot.py` | pyVista-based in-process field rendering |
-| `pyfes/projects/` | Simulation examples (18 projects) |
+| `pyfes/projects/` | Simulation examples (19 projects) |
+| `pyfes/projects/filter_dnngp.py` | DNN-GP surrogate model (GPyTorch) |
 | `iormesh/` | C mesher (Triangle wrapper, MATLAB .mat exporter) |
 | `data/` | `.poly` geometry files and `.h1.mat` mesh files |
 | `tests/` | pytest suite |
