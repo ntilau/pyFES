@@ -2,15 +2,18 @@
 set -euo pipefail
 
 # pyFES — setup script
-# Creates a virtual environment, installs dependencies, and
-# copies mesh data files from the FESmat archive.
+# Creates a virtual environment, installs the package with all
+# dependencies, and verifies the installation.
 #
 # Usage:
-#   ./setup.sh                # fresh setup
-#   ./setup.sh /path/to/FESmat.zip  # include mesh data from MATLAB archive
+#   ./configure                    # standard install
+#   ./configure --dev              # include dev / ML extras
+#   ./configure --minimal          # FEM-only, skip ML libs
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 VENV="$HERE/.venv"
+
+MODE="${1:-standard}"
 
 echo "=== pyFES setup ==="
 
@@ -25,35 +28,49 @@ echo "Installing package + dependencies ..."
 "$VENV/bin/pip" install --quiet -e "$HERE"
 "$VENV/bin/pip" install --quiet pytest
 
-# 2. Optional: extract mesh data from FESmat.zip
-if [ -n "${1:-}" ] && [ -f "$1" ]; then
-    echo "Extracting mesh data from $1 ..."
-    TMP="/tmp/pyfes_meshes_$$"
-    unzip -q -o "$1" -d "$TMP" 2>/dev/null || unzip -q -o "$1" "FESmat/FEpre/*" -d "$TMP"
-    if [ -d "$TMP/FESmat/FEpre" ]; then
-        mkdir -p "$HERE/data"
-        cp -r "$TMP/FESmat/FEpre/"* "$HERE/data/"
-        echo "Mesh data copied to $HERE/data/"
-    fi
-    rm -rf "$TMP"
-else
-    echo "No FESmat archive provided — skip mesh data."
-    echo "  Use:  $0 /path/to/FESmat.zip"
-    echo "  or manually place .poly and .h1.mat files in data/"
-fi
+# 2. Optional extras
+case "$MODE" in
+    --dev)
+        echo "Installing ML / DNN-GP dependencies ..."
+        "$VENV/bin/pip" install --quiet torch gpytorch scikit-learn
+        ;;
+    --minimal)
+        echo "Skipping ML dependencies (FEM-only mode)."
+        ;;
+    *)
+        echo "Installing ML / DNN-GP dependencies ..."
+        "$VENV/bin/pip" install --quiet torch gpytorch scikit-learn
+        ;;
+esac
 
 # 3. Verify
 echo "Verifying installation ..."
-"$VENV/bin/python" -c "from pyfes import constants; print(f'pyFES v{__import__(\"importlib.metadata\").metadata.version(\"pyfes\")} OK')"
+"$VENV/bin/python" -c "
+from pyfes import constants
+print(f'pyFES OK')
+try:
+    import torch; print(f'  torch {torch.__version__}')
+except: pass
+try:
+    import gpytorch; print(f'  gpytorch {gpytorch.__version__}')
+except: pass
+"
 
-# 4. Hint
-if [ -d "$HERE/data" ] && [ -n "$(ls "$HERE/data"/*.poly 2>/dev/null)" ]; then
-    echo "Mesh files found in data/ — projects are ready to run."
-    echo "  $VENV/bin/python -c 'from pyfes.projects import run_waveguide; run_waveguide()'"
+# 4. Check for mesh data
+echo ""
+if [ -d "$HERE/data" ] && ls "$HERE/data"/*.poly &>/dev/null 2>&1; then
+    echo "Mesh files:  found in data/"
 else
-    echo "No mesh files found. Either:"
-    echo "  ./setup.sh /path/to/FESmat.zip"
-    echo "  or place .poly/.mat files in data/ yourself."
+    echo "Mesh files:  none (generate with iormesh/ or download separately)"
 fi
 
+# Verify at least one project can import
+PYVER="$("$VENV/bin/python" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+echo "Python:      $PYVER"
+echo "Package:     pyFES 0.2.0"
+echo ""
+echo "Quick test:  $VENV/bin/python -m pytest tests/ -v"
+echo "Run FDFD:    $VENV/bin/python -c 'from pyfes.projects import run_waveguide; run_waveguide()'"
+echo "Run DNN-GP:  $VENV/bin/python -c 'from pyfes.projects import bilateral_filter_dnngp; print(\"import OK\")'"
+echo ""
 echo "=== done ==="
