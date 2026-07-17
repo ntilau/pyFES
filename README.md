@@ -83,7 +83,7 @@ model = BilateralFilterDNNGP().load("bilat_dnngp.pt")
 | `thermal_distribution_dg` | Discontinuous Galerkin heat |
 | `coaxial_capacitance` | Coax cable capacitance |
 | `capacitive_clearance` | Capacitive sensor |
-| `bilateral_filter_dnngp` | DNN-GP surrogate model — S₁₁ 0.25%, S₂₁ 0.45% error |
+| `bilateral_filter_dnngp` | Deep Kernel Learning surrogate — S₁₁ 0.19%, S₂₁ 0.23% error |
 
 ## Mesh generation (`.poly` → `.h1.mat`)
 

@@ -57,7 +57,7 @@ pyFES — Python Finite Element Solver for electromagnetics.
 | Module | Description |
 |---|---|
 | `filter_design.py` | Waveguide filter scattering (bilateral, two-post, HB) |
-| `filter_dnngp.py` | **DNN-GP surrogate** — trains 4 ExactGP models with DNN feature extractors to predict S-parameters from (εᵣ, freq). Uses harmonic frequency features. S11 achieves <1% relative error. |
+| `filter_dnngp.py` | **Deep Kernel Learning surrogate** (Wilson et al. 2016) — trains 4 DNN→GP models: S11 Re/Im (0.19%), S21 log|S|+phase (0.23%). |
 | `waveguide.py` | Rectangular waveguide S-parameters |
 | `modal_analysis.py` | TE mode cutoff frequencies, open microstrip |
 | `electrostatics.py` | Electrostatic potential |
@@ -88,15 +88,20 @@ Files in project root (not tracked in git):
 - `sys` dict carries all system state (solver config, assembled matrices, solution)
 - `mesh` dict carries all mesh geometry and topology
 
-### DNN-GP conventions (`filter_dnngp.py`)
-- 4 independent ExactGP models: Re(S₁₁), Im(S₁₁), log₁₀|S₂₁|, ∠S₂₁ (detrended)
-- S11 uses Re/Im directly (achieved 0.25% relative error)
-- S21 uses log₁₀|S₂₁| + detrended unwrapped phase with full linear fit (slope + intercept stored and restored during reconstruction) — handles the 14× dynamic range between passband and notch (achieved 0.45% relative error)
-- DNN feature extractor: Linear(8→512)→ReLU→Linear(512→256)→ReLU→Linear(256→128)
-- GP kernel: `ScaleKernel(RBFKernel(ard_num_dims=128))`
+### DKL conventions (`filter_dnngp.py`)
+- 4 independent DNN → ExactGP models (Deep Kernel Learning, Wilson et al. 2016)
+- DNN: `Linear(8→1000)→ReLU→Linear(1000→1000)→ReLU→Linear(1000→500)→ReLU→Linear(500→64)`
+- GP kernel: `ScaleKernel(RBFKernel(ard_num_dims=64))`
+- Two-stage training: DNN pretrain via MSE, then joint DNN+GP via marginal likelihood
 - Input features (8-dim): [εᵣ, f/f_scale, sin(ω), cos(ω), sin(2ω), cos(2ω), sin(3ω), cos(3ω)]
 - Data is z-score normalized per output before training
 - Validation split: adaptive (at most 1/3 of εᵣ values)
-- Save/load uses `torch.save` for full model state + scalers
-- .mat files contain: epsr, freq, s11/s12/s21/s22 (complex), s*_re/s*_im (float)
-- Generated .mat/.npz/.pt files are gitignored; regenerate via `bilateral_filter_dnngp(generate=True)`
+
+**Output transforms:**
+- **S11 — 0.19%**: Re/Im directly (raw complex works well for reflection)
+- **S21 — 0.23%**: log10|S| + detrended unwrapped phase (handles 14x amplitude range). Linear phase trend (slope+intercept) fitted per epsr, stored, and restored during reconstruction.
+
+**Data I/O:**
+- .mat files: epsr, freq, s11/s12/s21/s22 (complex), s*_re/s*_im (float)
+- Save/load: torch.save for full model state + scalers
+- Generated .mat/.npz/.pt files gitignored; regenerate via `bilateral_filter_dnngp(generate=True)`

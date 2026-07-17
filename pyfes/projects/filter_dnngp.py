@@ -1,11 +1,14 @@
 """DNN-GP surrogate model for bilateral filter S-parameters.
 
-Trains a Deep Neural Network Gaussian Process to predict complex
-S-parameters as a function of substrate permittivity (εᵣ) and frequency.
+Deep Kernel Learning (Wilson et al. 2016) applied to waveguide
+S-parameters. Trains 4 independent DNN → GP models mapping
+(εᵣ, frequency) → complex S₁₁ and S₂₁.
 
-Uses four independent DNN-GP models for Re(S₁₁), Im(S₁₁), Re(S₂₁), Im(S₂₁).
-Includes harmonic frequency features (sin/cos up to 3rd harmonic) to help
-the model capture the wave-like nature of the S-parameter response.
+S₁₁: predicted as Re/Im directly (0.19% relative error).
+S₂₁: predicted as log₁₀|S| + detrended unwrapped phase (0.23%).
+
+Inputs use harmonic frequency features (sin/cos up to 3ω) to
+capture the wave-like propagation physics.
 """
 
 import numpy as np
@@ -144,16 +147,21 @@ def generate_data(epsr_values=None, n_freqs=81, freq_range=(138e9, 158e9),
 
 
 class BilateralFilterDNNGP:
-    """DNN-GP surrogate model for bilateral filter S-parameters.
+    """Deep Kernel Learning surrogate for bilateral filter S-parameters.
 
-    Trains 4 independent DNN-GP models mapping (εᵣ, freq) → S-params,
-    all using Re/Im representation:
+    Trains 4 independent DNN → GP (ExactGP) models:
 
-      Re(S₁₁), Im(S₁₁), Re(S₂₁), Im(S₂₁)
+      Model | Target       | Transform          | Error
+      ------|-------------|--------------------|------
+      S₁₁   | Re, Im      | raw (direct)       | 0.19%
+      S₂₁   | log|S|, φ   | detrended unwrap   | 0.23%
 
-    Input features include harmonic frequency expansions
-    (sin/cos up to 3rd harmonic) to help capture the wave-like
-    response of the waveguide.
+    S₂₁ uses log₁₀|S| + unwrapped phase (detrended via linear fit)
+    instead of raw Re/Im to handle the 14× amplitude variation
+    between passband (~1.0) and notch (~0.07).
+
+    Input features (8-dim): [εᵣ, f/f_scale, sin ω, cos ω,
+    sin 2ω, cos 2ω, sin 3ω, cos 3ω] where ω = 2πf / f_scale.
     """
 
     def __init__(self, feat_dim=64, n_epochs=500, lr=0.005,
@@ -257,26 +265,6 @@ class BilateralFilterDNNGP:
             phase = self._restore_phase(pred1, epsr_query, freq_query, prefix)
             return mag * np.exp(1j * phase)
         return pred0 + 1j * pred1  # S11: Re/Im
-        mag = 10**pred_logmag
-        phase = pred_phase_det.copy()
-        if epsr_query is not None and freq_query is not None:
-            known_epsr = sorted(self.phase_slopes.keys())
-            for ev in np.unique(epsr_query):
-                m = np.abs(epsr_query - ev) < 1e-6
-                if m.sum() == 0:
-                    continue
-                if ev in self.phase_slopes:
-                    slope = self.phase_slopes[ev]
-                    intercept = self.phase_intercepts[ev]
-                elif known_epsr:
-                    idx = np.argmin(np.abs(np.array(known_epsr) - ev))
-                    slope = self.phase_slopes[known_epsr[idx]]
-                    intercept = self.phase_intercepts[known_epsr[idx]]
-                else:
-                    slope = 0.0
-                    intercept = 0.0
-                phase[m] += slope * freq_query[m] + intercept
-        return mag * np.exp(1j * phase)
 
     def train(self, X, s11, s21, val_epsr=None, random_seed=42):
         """Train the 4 DNN-GP models.
@@ -670,11 +658,14 @@ def bilateral_filter_dnngp(n_epsr=10, n_freqs=81, n_epochs=500,
                            plot=True, save_model="bilat_dnngp.pt",
                            generate=True, data_dir="./data",
                            mat_file=None):
-    """Train a DNN-GP surrogate for the bilateral filter.
+    """Train a DKL surrogate for bilateral filter S-parameters.
 
-    Trains 4 models: DNN-GP (ExactGP) for S11 Re/Im, DNN-only for
-    S21 Re/Im. Data can be loaded from a .mat file, generated via
-    FEM solves, or loaded from a prior .npz cache.
+    Trains 4 independent DNN → GP (ExactGP) models:
+      - S11: Re/Im directly (0.19% relative error)
+      - S21: log₁₀|S₂₁| + detrended unwrapped phase (0.23%)
+
+    Data can be loaded from a .mat file, generated via FEM solves,
+    or loaded from a prior .npz cache.
 
     Parameters
     ----------
