@@ -165,7 +165,8 @@ class BilateralFilterDNNGP:
         self._n_feat = 8  # base + harmonic features
 
         self._target_names = ["Re(S₁₁)", "Im(S₁₁)",
-                              "Re(S₂₁)", "Im(S₂₁)"]
+                              "log₁₀|S₂₁|", "∠S₂₁ (detrended)"]
+        self.phase_slopes = {}
 
     @staticmethod
     def _add_harmonics(X, f_scale=10e9):
@@ -181,14 +182,63 @@ class BilateralFilterDNNGP:
         return np.column_stack([epsr, f / f_scale, harm])
 
     def _prepare_targets(self, s11, s21, epsr_vals=None, freq_vals=None):
-        """Convert complex S-params to 4 Re/Im training targets."""
-        return [s11.real, s11.imag, s21.real, s21.imag]
+        """Convert complex S-params to 4 training targets.
+
+        S11: Re/Im directly (handles 0 dB reflection well).
+        S21: log₁₀|S₂₁| + detrended unwrapped phase (handles the
+             large dynamic range between passband and notch).
+        """
+        # S21 log-magnitude
+        s21_mag = np.maximum(np.abs(s21), 1e-10)
+        s21_logmag = np.log10(s21_mag)
+
+        # S21 detrended phase (remove linear group delay via full linear fit)
+        s21_phase = np.unwrap(np.angle(s21), period=2 * np.pi)
+        s21_phase_det = s21_phase.copy()
+        self.phase_slopes = {}
+        self.phase_intercepts = {}
+        if epsr_vals is not None and freq_vals is not None:
+            for ev in np.unique(epsr_vals):
+                m = np.abs(epsr_vals - ev) < 1e-6
+                if m.sum() < 2:
+                    self.phase_slopes[ev] = 0.0
+                    self.phase_intercepts[ev] = 0.0
+                    continue
+                f_loc = freq_vals[m]
+                p_loc = s21_phase[m]
+                A = np.column_stack([f_loc, np.ones_like(f_loc)])
+                coeffs, _, _, _ = np.linalg.lstsq(A, p_loc, rcond=None)
+                self.phase_slopes[ev] = coeffs[0]
+                self.phase_intercepts[ev] = coeffs[1]
+                s21_phase_det[m] = p_loc - A @ coeffs
+
+        return [s11.real, s11.imag, s21_logmag, s21_phase_det]
 
     def _reconstruct_s11(self, pred_re, pred_im):
         return pred_re + 1j * pred_im
 
-    def _reconstruct_s21(self, pred_re, pred_im):
-        return pred_re + 1j * pred_im
+    def _reconstruct_s21(self, pred_logmag, pred_phase_det,
+                         epsr_query=None, freq_query=None):
+        mag = 10**pred_logmag
+        phase = pred_phase_det.copy()
+        if epsr_query is not None and freq_query is not None:
+            known_epsr = sorted(self.phase_slopes.keys())
+            for ev in np.unique(epsr_query):
+                m = np.abs(epsr_query - ev) < 1e-6
+                if m.sum() == 0:
+                    continue
+                if ev in self.phase_slopes:
+                    slope = self.phase_slopes[ev]
+                    intercept = self.phase_intercepts[ev]
+                elif known_epsr:
+                    idx = np.argmin(np.abs(np.array(known_epsr) - ev))
+                    slope = self.phase_slopes[known_epsr[idx]]
+                    intercept = self.phase_intercepts[known_epsr[idx]]
+                else:
+                    slope = 0.0
+                    intercept = 0.0
+                phase[m] += slope * freq_query[m] + intercept
+        return mag * np.exp(1j * phase)
 
     def train(self, X, s11, s21, val_epsr=None, random_seed=42):
         """Train the 4 DNN-GP models.
@@ -356,7 +406,10 @@ class BilateralFilterDNNGP:
             preds.append(pred)
 
         s11_pred = self._reconstruct_s11(preds[0], preds[1])
-        s21_pred = self._reconstruct_s21(preds[2], preds[3])
+        s21_pred = self._reconstruct_s21(
+            preds[2], preds[3],
+            epsr_query=X[:, 0], freq_query=X[:, 1],
+        )
         return s11_pred, s21_pred
 
     @staticmethod
@@ -461,9 +514,12 @@ class BilateralFilterDNNGP:
             stds.append(std)
 
         s11_pred = self._reconstruct_s11(means[0], means[1])
-        s21_pred = self._reconstruct_s21(means[2], means[3])
+        s21_pred = self._reconstruct_s21(
+            means[2], means[3],
+            epsr_query=X[:, 0], freq_query=X[:, 1],
+        )
         s11_std = 0.5 * (stds[0] + stds[1])
-        s21_std = 0.5 * (stds[2] + stds[3])
+        s21_std = np.abs(s21_pred) * np.log(10) * stds[2]
         return s11_pred, s11_std, s21_pred, s21_std
 
 
