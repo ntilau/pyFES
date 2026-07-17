@@ -89,11 +89,14 @@ Files in project root (not tracked in git):
 - `mesh` dict carries all mesh geometry and topology
 
 ### DNN-GP conventions (`filter_dnngp.py`)
-- 4 independent ExactGP models: Re(S₁₁), Im(S₁₁), Re(S₂₁), Im(S₂₁)
-- DNN feature extractor: Linear(8→512)→ReLU→Linear(512→512)→ReLU→Linear(512→256)→ReLU→Linear(256→128)
+- 4 independent ExactGP models: Re(S₁₁), Im(S₁₁), log₁₀|S₂₁|, ∠S₂₁ (detrended)
+- S11 uses Re/Im directly (achieved 0.25% relative error)
+- S21 uses log₁₀|S₂₁| + detrended unwrapped phase with full linear fit (slope + intercept stored and restored during reconstruction) — handles the 14× dynamic range between passband and notch (achieved 0.45% relative error)
+- DNN feature extractor: Linear(8→512)→ReLU→Linear(512→256)→ReLU→Linear(256→128)
 - GP kernel: `ScaleKernel(RBFKernel(ard_num_dims=128))`
 - Input features (8-dim): [εᵣ, f/f_scale, sin(ω), cos(ω), sin(2ω), cos(2ω), sin(3ω), cos(3ω)]
 - Data is z-score normalized per output before training
 - Validation split: adaptive (at most 1/3 of εᵣ values)
 - Save/load uses `torch.save` for full model state + scalers
 - .mat files contain: epsr, freq, s11/s12/s21/s22 (complex), s*_re/s*_im (float)
+- Generated .mat/.npz/.pt files are gitignored; regenerate via `bilateral_filter_dnngp(generate=True)`

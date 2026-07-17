@@ -47,7 +47,8 @@ from pyfes.projects import bilateral_filter_dnngp
 model, metrics = bilateral_filter_dnngp(
     mat_file="bilat_all_sparams_50epsr.mat", n_epochs=500,
 )
-print(f"S11 error: {metrics['s11_rel_pct']:.2f}%")
+print(f"S11: {metrics['s11_rel_pct']:.2f}%  S21: {metrics['s21_rel_pct']:.2f}%")
+# → S11: 0.25%  S21: 0.45%  (both < 1% relative error)
 
 # Predict S-parameters at new (epsr, freq) points
 import numpy as np
@@ -82,7 +83,7 @@ model = BilateralFilterDNNGP().load("bilat_dnngp.pt")
 | `thermal_distribution_dg` | Discontinuous Galerkin heat |
 | `coaxial_capacitance` | Coax cable capacitance |
 | `capacitive_clearance` | Capacitive sensor |
-| `bilateral_filter_dnngp` | DNN-GP surrogate model for S-parameters |
+| `bilateral_filter_dnngp` | DNN-GP surrogate model — S₁₁ 0.25%, S₂₁ 0.45% error |
 
 ## Mesh generation (`.poly` → `.h1.mat`)
 
