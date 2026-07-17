@@ -91,7 +91,7 @@ Files in project root (not tracked in git):
 ### DKL conventions (`filter_dnngp.py`)
 - 4 independent DNN → ExactGP models (Deep Kernel Learning, Wilson et al. 2016)
 - DNN: `Linear(8→1000)→ReLU→Linear(1000→1000)→ReLU→Linear(1000→500)→ReLU→Linear(500→64)`
-- GP kernel: `ScaleKernel(RBFKernel(ard_num_dims=64))`
+- GP kernel: `ScaleKernel(RBFKernel(ard) × RBFKernel(ard))` — product kernel captures feature interactions
 - Two-stage training: DNN pretrain via MSE, then joint DNN+GP via marginal likelihood
 - Input features (8-dim): [εᵣ, f/f_scale, sin(ω), cos(ω), sin(2ω), cos(2ω), sin(3ω), cos(3ω)]
 - Data is z-score normalized per output before training

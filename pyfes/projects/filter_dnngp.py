@@ -46,11 +46,9 @@ class FeatureExtractor(torch.nn.Module):
         return self.net(x)
 
 
+# Single-output DNN-GP (ExactGP per S-param channel)
 class DNN_GP(gpytorch.models.ExactGP):
-    """Deep Kernel Learning model (Wilson et al. 2016).
-
-    DNN → RBF-ARD base kernel, trained jointly via marginal likelihood.
-    """
+    """Single-output Deep Kernel Learning — RBF × RBF product kernel."""
 
     def __init__(self, train_x, train_y, likelihood, in_dim=8, feat_dim=64):
         super().__init__(train_x, train_y, likelihood)
@@ -58,13 +56,14 @@ class DNN_GP(gpytorch.models.ExactGP):
         self.mean_module = gpytorch.means.ConstantMean()
         self.covar_module = gpytorch.kernels.ScaleKernel(
             gpytorch.kernels.RBFKernel(ard_num_dims=feat_dim)
+            * gpytorch.kernels.RBFKernel(ard_num_dims=feat_dim)
         )
 
     def forward(self, x):
         features = self.feature_extractor(x)
-        mean_x = self.mean_module(features)
-        covar_x = self.covar_module(features)
-        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+        return gpytorch.distributions.MultivariateNormal(
+            self.mean_module(features), self.covar_module(features)
+        )
 
 
 # ──────────────────────────────────────────────
@@ -331,8 +330,9 @@ class BilateralFilterDNNGP:
             epsr_vals=X[:, 0], freq_vals=X[:, 1]
         )
 
-        # Train the 4 models via Deep Kernel Learning (Wilson et al. 2016)
-        # Two-stage: (1) pretrain DNN via MSE, (2) joint DNN+GP via MLL
+        # Train 4 independent DNN → GP models, one per S-param channel.
+        # Each model has its own DNN feature extractor + 2 summed RBF kernels
+        # (broad + sharp), trained independently via marginal likelihood.
         import torch.nn as nn
 
         for i in range(4):
@@ -350,24 +350,24 @@ class BilateralFilterDNNGP:
                 dtype=torch.float32,
             )
 
-            # Per-paper DKL architecture: DNN → GP
             lik = gpytorch.likelihoods.GaussianLikelihood()
             model = DNN_GP(X_train, Yt, lik,
                            in_dim=self._n_feat, feat_dim=self.feat_dim)
 
-            # Stage 1: Pretrain DNN feature extractor via MSE (warm-start features)
+            # Stage 1: pretrain DNN (warm-start features)
             model.train()
-            dnn_only = model.feature_extractor
-            dnn_opt = torch.optim.AdamW(dnn_only.parameters(), lr=0.001)
+            dnn_opt = torch.optim.AdamW(
+                model.feature_extractor.parameters(), lr=0.001
+            )
             for e in range(min(100, self.n_epochs // 5)):
                 dnn_opt.zero_grad()
-                features = dnn_only(X_train)
-                pred = features.mean(dim=1, keepdim=True).expand(-1, 1).ravel()
+                feats = model.feature_extractor(X_train)
+                pred = feats.mean(dim=1).expand(-1)
                 loss = nn.MSELoss()(pred, Yt)
                 loss.backward()
                 dnn_opt.step()
 
-            # Stage 2: Joint DNN + GP training via marginal likelihood
+            # Stage 2: joint DNN + 2xRBF via marginal likelihood
             model.train()
             lik.train()
             opt = torch.optim.AdamW(
@@ -442,11 +442,11 @@ class BilateralFilterDNNGP:
             with (torch.no_grad(),
                   gpytorch.settings.fast_pred_var()):
                 p = lik(model(X_norm))
-            pred_n = p.mean.numpy()
-            pred = self.scalers_y[i].inverse_transform(
-                pred_n.reshape(-1, 1)
-            )[:, 0]
-            preds.append(pred)
+            preds.append(
+                self.scalers_y[i].inverse_transform(
+                    p.mean.numpy().reshape(-1, 1)
+                )[:, 0]
+            )
 
         s11_pred = self._reconstruct(preds[0], preds[1], X[:, 0], X[:, 1], "s11")
         s21_pred = self._reconstruct(preds[2], preds[3], X[:, 0], X[:, 1], "s21")
@@ -534,7 +534,7 @@ class BilateralFilterDNNGP:
             self.scalers_x.transform(X_harm), dtype=torch.float32
         )
 
-        means = []
+        preds = []
         stds = []
         for i in range(4):
             model = self.models[i]
@@ -544,17 +544,16 @@ class BilateralFilterDNNGP:
             with (torch.no_grad(),
                   gpytorch.settings.fast_pred_var()):
                 p = lik(model(X_norm))
-            pred_n = p.mean.numpy()
+            preds.append(
+                self.scalers_y[i].inverse_transform(
+                    p.mean.numpy().reshape(-1, 1)
+                )[:, 0]
+            )
             std_n = np.maximum(p.stddev.numpy(), 0.0)
-            pred = self.scalers_y[i].inverse_transform(
-                pred_n.reshape(-1, 1)
-            )[:, 0]
-            means.append(pred)
-            std = std_n * np.sqrt(self.scalers_y[i].var_[0])
-            stds.append(std)
+            stds.append(std_n * np.sqrt(self.scalers_y[i].var_[0]))
 
-        s11_pred = self._reconstruct(means[0], means[1], X[:, 0], X[:, 1], "s11")
-        s21_pred = self._reconstruct(means[2], means[3], X[:, 0], X[:, 1], "s21")
+        s11_pred = self._reconstruct(preds[0], preds[1], X[:, 0], X[:, 1], "s11")
+        s21_pred = self._reconstruct(preds[2], preds[3], X[:, 0], X[:, 1], "s21")
         s11_std = np.abs(s11_pred) * np.log(10) * stds[0]
         s21_std = np.abs(s21_pred) * np.log(10) * stds[2]
         return s11_pred, s11_std, s21_pred, s21_std
