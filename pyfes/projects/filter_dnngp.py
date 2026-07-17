@@ -24,15 +24,19 @@ from ..projects._utils import scattering_parameters
 
 
 class FeatureExtractor(torch.nn.Module):
-    """Deep neural network mapping features → learned features for GP."""
+    """Deep kernel feature extractor (Wilson et al. 2016).
 
-    def __init__(self, in_dim=8, out_dim=128):
+    Architecture per DKL paper: wide hidden layers learn a low-dimensional
+    representation for the GP base kernel.
+    """
+
+    def __init__(self, in_dim=8, out_dim=64):
         super().__init__()
         self.net = torch.nn.Sequential(
-            torch.nn.Linear(in_dim, 512), torch.nn.ReLU(),
-            torch.nn.Linear(512, 512), torch.nn.ReLU(),
-            torch.nn.Linear(512, 256), torch.nn.ReLU(),
-            torch.nn.Linear(256, out_dim),
+            torch.nn.Linear(in_dim, 1000), torch.nn.ReLU(),
+            torch.nn.Linear(1000, 1000), torch.nn.ReLU(),
+            torch.nn.Linear(1000, 500), torch.nn.ReLU(),
+            torch.nn.Linear(500, out_dim),
         )
 
     def forward(self, x):
@@ -40,9 +44,12 @@ class FeatureExtractor(torch.nn.Module):
 
 
 class DNN_GP(gpytorch.models.ExactGP):
-    """Exact GP with DNN-based feature extraction."""
+    """Deep Kernel Learning model (Wilson et al. 2016).
 
-    def __init__(self, train_x, train_y, likelihood, in_dim=8, feat_dim=128):
+    DNN → RBF-ARD base kernel, trained jointly via marginal likelihood.
+    """
+
+    def __init__(self, train_x, train_y, likelihood, in_dim=8, feat_dim=64):
         super().__init__(train_x, train_y, likelihood)
         self.feature_extractor = FeatureExtractor(in_dim=in_dim, out_dim=feat_dim)
         self.mean_module = gpytorch.means.ConstantMean()
@@ -149,7 +156,7 @@ class BilateralFilterDNNGP:
     response of the waveguide.
     """
 
-    def __init__(self, feat_dim=128, n_epochs=500, lr=0.005,
+    def __init__(self, feat_dim=64, n_epochs=500, lr=0.005,
                  weight_decay=1e-4, verbose=True):
         self.feat_dim = feat_dim
         self.n_epochs = n_epochs
@@ -167,6 +174,7 @@ class BilateralFilterDNNGP:
         self._target_names = ["Re(S₁₁)", "Im(S₁₁)",
                               "log₁₀|S₂₁|", "∠S₂₁ (detrended)"]
         self.phase_slopes = {}
+        self.phase_intercepts = {}
 
     @staticmethod
     def _add_harmonics(X, f_scale=10e9):
@@ -181,44 +189,74 @@ class BilateralFilterDNNGP:
         ])
         return np.column_stack([epsr, f / f_scale, harm])
 
-    def _prepare_targets(self, s11, s21, epsr_vals=None, freq_vals=None):
-        """Convert complex S-params to 4 training targets.
+    def _detrend(self, s_complex, epsr_vals, freq_vals, prefix="s11"):
+        """Compute log10|S| and detrended unwrapped phase for one S-param.
 
-        S11: Re/Im directly (handles 0 dB reflection well).
-        S21: log₁₀|S₂₁| + detrended unwrapped phase (handles the
-             large dynamic range between passband and notch).
+        Detrending removes the linear group delay (slope + intercept) per
+        epsr value via a full linear fit, storing both for reconstruction.
         """
-        # S21 log-magnitude
-        s21_mag = np.maximum(np.abs(s21), 1e-10)
-        s21_logmag = np.log10(s21_mag)
-
-        # S21 detrended phase (remove linear group delay via full linear fit)
-        s21_phase = np.unwrap(np.angle(s21), period=2 * np.pi)
-        s21_phase_det = s21_phase.copy()
-        self.phase_slopes = {}
-        self.phase_intercepts = {}
+        mag = np.maximum(np.abs(s_complex), 1e-10)
+        logmag = np.log10(mag)
+        phase = np.unwrap(np.angle(s_complex), period=2 * np.pi)
+        phase_det = phase.copy()
+        self.phase_slopes[prefix] = {}
+        self.phase_intercepts[prefix] = {}
         if epsr_vals is not None and freq_vals is not None:
             for ev in np.unique(epsr_vals):
                 m = np.abs(epsr_vals - ev) < 1e-6
                 if m.sum() < 2:
-                    self.phase_slopes[ev] = 0.0
-                    self.phase_intercepts[ev] = 0.0
+                    self.phase_slopes[prefix][ev] = 0.0
+                    self.phase_intercepts[prefix][ev] = 0.0
                     continue
                 f_loc = freq_vals[m]
-                p_loc = s21_phase[m]
+                p_loc = phase[m]
                 A = np.column_stack([f_loc, np.ones_like(f_loc)])
                 coeffs, _, _, _ = np.linalg.lstsq(A, p_loc, rcond=None)
-                self.phase_slopes[ev] = coeffs[0]
-                self.phase_intercepts[ev] = coeffs[1]
-                s21_phase_det[m] = p_loc - A @ coeffs
+                self.phase_slopes[prefix][ev] = coeffs[0]
+                self.phase_intercepts[prefix][ev] = coeffs[1]
+                phase_det[m] = p_loc - A @ coeffs
+        return logmag, phase_det
 
+    def _restore_phase(self, phase_det, epsr_query, freq_query, prefix="s11"):
+        """Add back slope + intercept to detrended phase."""
+        phase = phase_det.copy()
+        slopes = self.phase_slopes.get(prefix, {})
+        intercepts = self.phase_intercepts.get(prefix, {})
+        known_epsr = sorted(slopes.keys())
+        for ev in np.unique(epsr_query):
+            m = np.abs(epsr_query - ev) < 1e-6
+            if m.sum() == 0:
+                continue
+            if ev in slopes:
+                slope = slopes[ev]
+                intercept = intercepts[ev]
+            elif known_epsr:
+                idx = np.argmin(np.abs(np.array(known_epsr) - ev))
+                slope = slopes[known_epsr[idx]]
+                intercept = intercepts[known_epsr[idx]]
+            else:
+                slope = 0.0
+                intercept = 0.0
+            phase[m] += slope * freq_query[m] + intercept
+        return phase
+
+    def _prepare_targets(self, s11, s21, epsr_vals=None, freq_vals=None):
+        """Convert complex S-params to 4 training targets.
+
+        S11: Re/Im directly (handles reflection nulls better than phase).
+        S21: log₁₀|S₂₁| + detrended unwrapped phase (handles the
+             large dynamic range between passband and notch).
+        """
+        s21_logmag, s21_phase_det = self._detrend(s21, epsr_vals, freq_vals, "s21")
         return [s11.real, s11.imag, s21_logmag, s21_phase_det]
 
-    def _reconstruct_s11(self, pred_re, pred_im):
-        return pred_re + 1j * pred_im
-
-    def _reconstruct_s21(self, pred_logmag, pred_phase_det,
-                         epsr_query=None, freq_query=None):
+    def _reconstruct(self, pred0, pred1, epsr_query=None, freq_query=None, prefix="s11"):
+        """Reconstruct complex S from Re/Im (S11) or log|S|+phase (S21)."""
+        if prefix == "s21":
+            mag = 10**pred0
+            phase = self._restore_phase(pred1, epsr_query, freq_query, prefix)
+            return mag * np.exp(1j * phase)
+        return pred0 + 1j * pred1  # S11: Re/Im
         mag = 10**pred_logmag
         phase = pred_phase_det.copy()
         if epsr_query is not None and freq_query is not None:
@@ -305,7 +343,10 @@ class BilateralFilterDNNGP:
             epsr_vals=X[:, 0], freq_vals=X[:, 1]
         )
 
-        # Train the 4 models — all use DNN-GP (ExactGP)
+        # Train the 4 models via Deep Kernel Learning (Wilson et al. 2016)
+        # Two-stage: (1) pretrain DNN via MSE, (2) joint DNN+GP via MLL
+        import torch.nn as nn
+
         for i in range(4):
             name = self._target_names[i]
             if self.verbose:
@@ -321,10 +362,24 @@ class BilateralFilterDNNGP:
                 dtype=torch.float32,
             )
 
-            # DNN-GP (ExactGP) for all outputs
+            # Per-paper DKL architecture: DNN → GP
             lik = gpytorch.likelihoods.GaussianLikelihood()
             model = DNN_GP(X_train, Yt, lik,
                            in_dim=self._n_feat, feat_dim=self.feat_dim)
+
+            # Stage 1: Pretrain DNN feature extractor via MSE (warm-start features)
+            model.train()
+            dnn_only = model.feature_extractor
+            dnn_opt = torch.optim.AdamW(dnn_only.parameters(), lr=0.001)
+            for e in range(min(100, self.n_epochs // 5)):
+                dnn_opt.zero_grad()
+                features = dnn_only(X_train)
+                pred = features.mean(dim=1, keepdim=True).expand(-1, 1).ravel()
+                loss = nn.MSELoss()(pred, Yt)
+                loss.backward()
+                dnn_opt.step()
+
+            # Stage 2: Joint DNN + GP training via marginal likelihood
             model.train()
             lik.train()
             opt = torch.optim.AdamW(
@@ -405,11 +460,8 @@ class BilateralFilterDNNGP:
             )[:, 0]
             preds.append(pred)
 
-        s11_pred = self._reconstruct_s11(preds[0], preds[1])
-        s21_pred = self._reconstruct_s21(
-            preds[2], preds[3],
-            epsr_query=X[:, 0], freq_query=X[:, 1],
-        )
+        s11_pred = self._reconstruct(preds[0], preds[1], X[:, 0], X[:, 1], "s11")
+        s21_pred = self._reconstruct(preds[2], preds[3], X[:, 0], X[:, 1], "s21")
         return s11_pred, s21_pred
 
     @staticmethod
@@ -513,12 +565,9 @@ class BilateralFilterDNNGP:
             std = std_n * np.sqrt(self.scalers_y[i].var_[0])
             stds.append(std)
 
-        s11_pred = self._reconstruct_s11(means[0], means[1])
-        s21_pred = self._reconstruct_s21(
-            means[2], means[3],
-            epsr_query=X[:, 0], freq_query=X[:, 1],
-        )
-        s11_std = 0.5 * (stds[0] + stds[1])
+        s11_pred = self._reconstruct(means[0], means[1], X[:, 0], X[:, 1], "s11")
+        s21_pred = self._reconstruct(means[2], means[3], X[:, 0], X[:, 1], "s21")
+        s11_std = np.abs(s11_pred) * np.log(10) * stds[0]
         s21_std = np.abs(s21_pred) * np.log(10) * stds[2]
         return s11_pred, s11_std, s21_pred, s21_std
 
