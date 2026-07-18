@@ -45,7 +45,7 @@ This paper presents a DKL-based surrogate for the bilateral finline filter, a ca
     \item A complete, end-to-end MOR pipeline from FEM data generation to trained surrogate with uncertainty estimates.
     \item An input encoding strategy using harmonic features (sin/cos expansions of frequency) that captures the wave-like propagation physics.
     \item A targeted output transformation: direct Re/Im regression for S$_{11}$ (reflection), and log-magnitude plus detrended unwrapped-phase regression for S$_{21}$ (transmission), which handles a 14$\times$ amplitude variation between passband and notch.
-    \item Demonstration of sub-0.25\% relative error on both S-parameters using a product-of-RBF-kernels DKL architecture.
+    \item Demonstration of sub-0.25\% relative error on both S-parameters using a product-of-RBF-kernels DKL architecture derived from an FEM solver validated on nonlinear waveguide problems~\cite{ntibarikure2012}.
 \end{enumerate}
 
 \section{Problem Formulation}
@@ -342,6 +342,9 @@ C.~E.~Rasmussen and C.~K.~I.~Williams, \textit{Gaussian Processes for Machine Le
 
 \bibitem{kay1998fundamentals}
 S.~M.~Kay, \textit{Fundamentals of Statistical Signal Processing: Estimation Theory}. Prentice Hall, 1998.
+
+\bibitem{ntibarikure2012}
+L.~Ntibarikure, G.~Pelosi, and S.~Selleri, ``Efficient harmonic balance analysis of waveguide devices with nonlinear dielectrics,'' \textit{IEEE Microw. Wireless Compon. Lett.}, vol.~22, no.~5, pp.~221--223, 2012.
 
 \bibitem{pyfes2025}
 L.~Ntibarikure, ``pyFES: Python Finite Element Software for electromagnetics,'' 2025. [Online]. Available: \url{https://github.com/ntilau/pyFES}
