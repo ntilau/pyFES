@@ -31,7 +31,7 @@ figsize = (5.2, 3.4)
 for ax_idx, ev in enumerate(pick):
     print(f"Plotting S11 + S21 uncertainty for epsr = {ev:.4f}")
     m = np.isin(epsr_vals, [ev])
-    s11p, s11_std, s21p, s21_std = model.predict_with_uncertainty(X[m])
+    s11p, s11_std_db, s21p, s21_std_db = model.predict_with_uncertainty(X[m])
 
     f_ghz = freqs[m] / 1e9
     idx = np.argsort(f_ghz)
@@ -43,18 +43,12 @@ for ax_idx, ev in enumerate(pick):
     s21_dB = 20 * np.log10(s21_abs + 1e-15)
     s11_true_dB = 20 * np.log10(np.abs(s11[m][idx]) + 1e-15)
     s21_true_dB = 20 * np.log10(np.abs(s21[m][idx]) + 1e-15)
-    s11_sig = s11_std[idx]
-    s21_sig = s21_std[idx]
 
-    # S11: linear-magnitude std → dB CI: 20·log10(|S| ± 3σ)
-    s11_lo = 20 * np.log10(np.maximum(s11_abs - 2 * s11_sig, 1e-15))
-    s11_hi = 20 * np.log10(s11_abs + 2 * s11_sig + 1e-15)
-
-    # S21: model trained on log10|S|.  σ_y = s21_std / (|S|·ln(10))
-    #       dB CI = 20·(log10|S| ± 3·σ_y) = s21_dB ± 60·σ_y
-    s21_sig_log10 = s21_sig / (np.maximum(s21_abs, 1e-15) * np.log(10))
-    s21_lo = s21_dB - 40 * s21_sig_log10
-    s21_hi = s21_dB + 40 * s21_sig_log10
+    # CI in dB: ±2·σ_dB  (std is already in dB from predict_with_uncertainty)
+    s11_lo = s11_dB - 2 * s11_std_db[idx]
+    s11_hi = s11_dB + 2 * s11_std_db[idx]
+    s21_lo = s21_dB - 2 * s21_std_db[idx]
+    s21_hi = s21_dB + 2 * s21_std_db[idx]
 
     fig, ax1 = plt.subplots(1, 1, figsize=figsize)
     ax2 = ax1.twinx()

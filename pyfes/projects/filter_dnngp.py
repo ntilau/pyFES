@@ -586,9 +586,19 @@ class BilateralFilterDNNGP:
 
         s11_pred = self._reconstruct(preds[0], preds[1], X[:, 0], X[:, 1], "s11")
         s21_pred = self._reconstruct(preds[2], preds[3], X[:, 0], X[:, 1], "s21")
-        s11_std = np.abs(s11_pred) * np.log(10) * stds[0]
-        s21_std = np.abs(s21_pred) * np.log(10) * stds[2]
-        return s11_pred, s11_std, s21_pred, s21_std
+
+        # S11 std in dB: combine Re/Im uncertainties
+        s11_mag = np.maximum(np.abs(s11_pred), 1e-15)
+        s11_mag_std = np.sqrt(
+            ((s11_pred.real / s11_mag) * stds[0]) ** 2
+            + ((s11_pred.imag / s11_mag) * stds[1]) ** 2
+        )
+        s11_std_db = (20.0 / np.log(10)) * s11_mag_std / s11_mag
+
+        # S21 std in dB: model trained on log10|S|, so σ_dB = 20 · σ_log10 (exact)
+        s21_std_db = 20.0 * stds[2]
+
+        return s11_pred, s11_std_db, s21_pred, s21_std_db
 
 
 # ──────────────────────────────────────────────
