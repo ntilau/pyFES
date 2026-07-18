@@ -49,10 +49,6 @@ for ax_idx, ev in enumerate(pick):
     ax2 = ax1.twinx()
 
     # ── S11 on left axis ──
-    ax1.fill_between(f_ghz, s11_dB - 3 * s11_sig, s11_dB + 3 * s11_sig,
-                     alpha=0.45, color="C0", label=r"S$_{11}$ $\pm 3\sigma$")
-    ax1.plot(f_ghz, s11_dB - 3 * s11_sig, "--", color="C0", lw=1.0, alpha=0.7)
-    ax1.plot(f_ghz, s11_dB + 3 * s11_sig, "--", color="C0", lw=1.0, alpha=0.7)
     ax1.plot(f_ghz, s11_dB, "-", color="C0", lw=1.8, label=r"S$_{11}$ pred")
     ax1.plot(f_ghz, s11_true_dB, "o", color="C0", ms=3, alpha=0.5, label=r"S$_{11}$ FEM")
     ax1.set_ylabel(r"|S$_{11}$| (dB)", fontsize=11, color="C0")
@@ -60,10 +56,6 @@ for ax_idx, ev in enumerate(pick):
     ax1.tick_params(axis="y", labelcolor="C0", labelsize=9)
 
     # ── S21 on right axis ──
-    ax2.fill_between(f_ghz, s21_dB - 3 * s21_sig, s21_dB + 3 * s21_sig,
-                     alpha=0.45, color="C3", label=r"S$_{21}$ $\pm 3\sigma$")
-    ax2.plot(f_ghz, s21_dB - 3 * s21_sig, "--", color="C3", lw=1.0, alpha=0.7)
-    ax2.plot(f_ghz, s21_dB + 3 * s21_sig, "--", color="C3", lw=1.0, alpha=0.7)
     ax2.plot(f_ghz, s21_dB, "-", color="C3", lw=1.8, label=r"S$_{21}$ pred")
     ax2.plot(f_ghz, s21_true_dB, "s", color="C3", ms=3, alpha=0.5, label=r"S$_{21}$ FEM")
     ax2.set_ylabel(r"|S$_{21}$| (dB)", fontsize=11, color="C3")
@@ -71,7 +63,7 @@ for ax_idx, ev in enumerate(pick):
     ax2.tick_params(axis="y", labelcolor="C3", labelsize=9)
 
     ax1.set_xlabel("Frequency (GHz)", fontsize=11)
-    ax1.set_title(rf"Predictive uncertainty, $\varepsilon_r = {ev:.3f}$", fontsize=11)
+    ax1.set_title(rf"S-parameter predictions, $\varepsilon_r = {ev:.3f}$", fontsize=11)
 
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
