@@ -40,34 +40,30 @@ cm = plt.cm.viridis
 
 def plot_panel(ax, freqs, st, sp, epsr_vals, val_epsr,
                ylabel, ylim, sfx, is_mag=False):
-    """Plot magnitude or phase for one S-param, single panel."""
-    for ev in np.sort(np.unique(epsr_vals)):
+    """Plot magnitude or phase — only held-out εᵣ values."""
+    epsr_uniq = np.sort(np.unique(epsr_vals))
+    if val_epsr is not None:
+        epsr_uniq = [e for e in epsr_uniq if np.any(np.abs(np.asarray(val_epsr) - e) < 1e-6)]
+    for ev in epsr_uniq:
         m = np.abs(epsr_vals - ev) < 1e-6
         if m.sum() == 0:
             continue
-        is_val = val_epsr is not None and np.any(
-            np.abs(np.asarray(val_epsr) - ev) < 1e-6
-        )
-        alpha = 0.8 if is_val else 0.2
-        lw = 1.5 if is_val else 0.6
         color = cm((ev - epsr_lo) / (epsr_hi - epsr_lo))
         f_ghz = freqs[m] / 1e9
         if is_mag:
             ax.plot(f_ghz, 20 * np.log10(np.abs(st[m]) + 1e-15),
-                    "-", lw=lw, alpha=alpha, color=color)
+                    "-", lw=1.5, color=color)
             ax.plot(f_ghz, 20 * np.log10(np.abs(sp[m]) + 1e-15),
-                    "--", lw=lw, alpha=alpha, color=color)
+                    "--", lw=1.5, color=color)
         else:
-            # Only show phase where BOTH true and predicted |S| > 0.05
-            # to avoid phase noise near reflection nulls (|S11| ~ 0 at ~150 GHz)
             mask_h = (np.abs(st[m]) > 0.05) & (np.abs(sp[m]) > 0.05)
             if mask_h.sum() == 0:
                 continue
             f_ghz_h = f_ghz[mask_h]
             ax.plot(f_ghz_h, np.angle(st[m][mask_h], deg=True),
-                    "-", lw=lw, alpha=alpha, color=color)
+                    "-", lw=1.5, color=color)
             ax.plot(f_ghz_h, np.angle(sp[m][mask_h], deg=True),
-                    "--", lw=lw, alpha=alpha, color=color)
+                    "--", lw=1.5, color=color)
     ax.set_ylabel(ylabel, fontsize=11)
     if ylim:
         ax.set_ylim(*ylim)
@@ -84,8 +80,11 @@ def plot_panel(ax, freqs, st, sp, epsr_vals, val_epsr,
     cbar.ax.tick_params(labelsize=8)
 
 
-def plot_error_scatter(ax, freqs, epsr_vals, st, sp, title):
-    """Error scatter plot."""
+def plot_error_scatter(ax, freqs, epsr_vals, st, sp, title, val_epsr=None):
+    """Error scatter plot — only held-out points."""
+    if val_epsr is not None:
+        mask = np.isin(epsr_vals, val_epsr)
+        freqs, epsr_vals, st, sp = freqs[mask], epsr_vals[mask], st[mask], sp[mask]
     rel = np.abs(sp - st) / (np.abs(st) + 1e-15) * 100
     sc = ax.scatter(freqs / 1e9, epsr_vals,
                     c=np.log10(np.clip(rel, 1e-4, 100)),
@@ -129,10 +128,10 @@ for st, sp, sfx, prefix in [
     plt.close(fig)
     print(f"Saved {path}")
 
-    # Panel 3: error scatter
+    # Panel 3: error scatter (held-out only)
     fig, ax = plt.subplots(1, 1, figsize=figsize)
     plot_error_scatter(ax, freqs, epsr_vals, st, sp,
-                       sfx + r" relative error")
+                       sfx + r" relative error", val_epsr=val_epsr)
     ax.set_title(sfx + r" relative error", fontsize=11)
     fig.tight_layout()
     path = f"paper/fig_{prefix}_error.pdf"
