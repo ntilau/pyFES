@@ -480,43 +480,75 @@ class BilateralFilterDNNGP:
         }
 
     def save(self, path="bilat_dnngp.pt"):
-        """Save trained model weights and scalers."""
+        """Save trained model weights, scalers, and GP training data."""
         state = {
             "scalers_x": self.scalers_x,
             "scalers_y": self.scalers_y,
             "feat_dim": self.feat_dim,
+            "phase_slopes": self.phase_slopes,
+            "phase_intercepts": self.phase_intercepts,
             "model_states": [],
             "lik_states": [],
+            "train_inputs": [],
+            "train_targets": [],
         }
         for i in range(4):
             state["model_states"].append(self.models[i].state_dict())
             state["lik_states"].append(self.likelihoods[i].state_dict())
+            # Save GP training data — ExactGP uses this for posterior prediction.
+            # Without it, a loaded model predicts near the training mean.
+            state["train_inputs"].append(
+                [t.cpu() for t in self.models[i].train_inputs]
+            )
+            state["train_targets"].append(
+                self.models[i].train_targets.cpu()
+            )
         torch.save(state, path)
 
     def load(self, path="bilat_dnngp.pt"):
-        """Load trained model weights and scalers."""
+        """Load trained model weights, scalers, and GP training data."""
         from sklearn.preprocessing import StandardScaler
 
         state = torch.load(path, weights_only=False)
         self.feat_dim = state["feat_dim"]
         self.scalers_x = state["scalers_x"]
         self.scalers_y = state["scalers_y"]
+        self.phase_slopes = state.get("phase_slopes", {})
+        self.phase_intercepts = state.get("phase_intercepts", {})
 
-        dummy_x = torch.zeros((10, self._n_feat), dtype=torch.float32)
-        dummy_y = torch.zeros(10, dtype=torch.float32)
+        has_training_data = "train_inputs" in state
 
         for i in range(4):
             lik = gpytorch.likelihoods.GaussianLikelihood()
-            model = DNN_GP(
-                dummy_x, dummy_y, lik,
-                in_dim=self._n_feat, feat_dim=self.feat_dim
-            )
+            if has_training_data and i < len(state["train_inputs"]):
+                # Restore with saved training data so the GP posterior works
+                ti = [t for t in state["train_inputs"][i]]
+                tt = state["train_targets"][i]
+                model = DNN_GP(
+                    ti[0], tt, lik,
+                    in_dim=self._n_feat, feat_dim=self.feat_dim
+                )
+            else:
+                # Fallback: dummy data — predictions will be near training mean
+                dummy_x = torch.zeros((10, self._n_feat), dtype=torch.float32)
+                dummy_y = torch.zeros(10, dtype=torch.float32)
+                model = DNN_GP(
+                    dummy_x, dummy_y, lik,
+                    in_dim=self._n_feat, feat_dim=self.feat_dim
+                )
             model.load_state_dict(state["model_states"][i])
             lik.load_state_dict(state["lik_states"][i])
             self.models[i] = model
             self.likelihoods[i] = lik
 
         self.is_trained = True
+        if not has_training_data or not self.phase_slopes:
+            import warnings
+            warnings.warn(
+                "Model saved with older code — missing GP training data. "
+                "Re-train and re-save, or use the fix_model_checkpoint.py "
+                "script to restore the missing state."
+            )
         return self
 
     def predict_with_uncertainty(self, X):
@@ -565,9 +597,9 @@ class BilateralFilterDNNGP:
 
 
 def plot_results(freqs, s11_true, s21_true, s11_pred, s21_pred,
-                 test_epsr_values, epsr_test_mask, path=None,
-                 title_suffix=""):
-    """Plot magnitude and phase of true vs predicted S-parameters.
+                 test_epsr_values, val_epsr=None, path=None,
+                 title_suffix="", epsr_range=(2.0, 2.2)):
+    """Plot magnitude, phase, and error scatter of true vs predicted S-parameters.
 
     Parameters
     ----------
@@ -579,62 +611,89 @@ def plot_results(freqs, s11_true, s21_true, s11_pred, s21_pred,
         Predicted complex S-parameters.
     test_epsr_values : ndarray
         εᵣ values corresponding to each test point.
-    epsr_test_mask : ndarray or None
-        Boolean mask for test set (same length as freqs).
+    val_epsr : array-like or None
+        εᵣ values considered held-out (plotted bold). If None, all bold.
     path : str, optional
         Save path. If None, displays interactively.
     title_suffix : str
         Appended to figure title.
+    epsr_range : tuple
+        (min, max) for color mapping.
     """
     import matplotlib.pyplot as plt
 
-    from ..post.plot import _build_grid  # mesh helper unused here
+    from ..post.plot import _build_grid  # noqa: F401 — mesh helper unused
     import matplotlib  # noqa: F401 — ensures backend is loaded
 
-    if epsr_test_mask is None:
-        epsr_test_mask = np.ones(len(freqs), dtype=bool)
-
-    fig, axes = plt.subplots(2, 2, figsize=(14, 8))
     cm = plt.cm.viridis
+    epsr_lo, epsr_hi = epsr_range
+
+    fig, axes = plt.subplots(2, 3, figsize=(18, 9))
 
     for col, (st, sp, sfx) in enumerate([
         (s11_true, s11_pred, "S₁₁"),
         (s21_true, s21_pred, "S₂₁"),
     ]):
-        # Magnitude
+        # ── Magnitude ──
         ax = axes[0, col]
-        for j, ev in enumerate(np.sort(np.unique(test_epsr_values))):
-            m = (np.abs(test_epsr_values - ev)
-                 < 1e-6) & epsr_test_mask
+        for ev in np.sort(np.unique(test_epsr_values)):
+            m = np.abs(test_epsr_values - ev) < 1e-6
             if m.sum() == 0:
                 continue
+            is_val = val_epsr is not None and np.any(
+                np.abs(np.asarray(val_epsr) - ev) < 1e-6
+            )
+            alpha = 0.8 if is_val else 0.2
+            lw = 1.5 if is_val else 0.6
+            color = cm((ev - epsr_lo) / (epsr_hi - epsr_lo))
             f_ghz = freqs[m] / 1e9
             ax.plot(f_ghz, 20 * np.log10(np.abs(st[m]) + 1e-15),
-                    "k-", lw=0.8, alpha=0.3)
+                    "-", lw=lw, alpha=alpha, color=color)
             ax.plot(f_ghz, 20 * np.log10(np.abs(sp[m]) + 1e-15),
-                    "--", lw=1.5, color=cm((ev - 2.0) / 0.2))
+                    "--", lw=lw, alpha=alpha, color=color)
         ax.set_ylabel(f"|{sfx}| (dB)")
-        ax.grid(True, alpha=0.3)
         ax.set_ylim(-80, 5)
+        ax.grid(True, alpha=0.3)
 
-        # Phase
+        # ── Phase ──
         ax = axes[1, col]
-        for j, ev in enumerate(np.sort(np.unique(test_epsr_values))):
-            m = (np.abs(test_epsr_values - ev)
-                 < 1e-6) & epsr_test_mask
+        for ev in np.sort(np.unique(test_epsr_values)):
+            m = np.abs(test_epsr_values - ev) < 1e-6
             if m.sum() == 0:
                 continue
-            mask_hires = np.abs(st[m]) > 0.02
-            f_ghz = freqs[m][mask_hires] / 1e9
-            if len(f_ghz) == 0:
+            is_val = val_epsr is not None and np.any(
+                np.abs(np.asarray(val_epsr) - ev) < 1e-6
+            )
+            alpha = 0.8 if is_val else 0.2
+            lw = 1.5 if is_val else 0.6
+            color = cm((ev - epsr_lo) / (epsr_hi - epsr_lo))
+            mask_h = np.abs(st[m]) > 0.02
+            if mask_h.sum() == 0:
                 continue
-            ax.plot(f_ghz, np.angle(st[m][mask_hires], deg=True),
-                    "k-", lw=0.8, alpha=0.3)
-            ax.plot(f_ghz, np.angle(sp[m][mask_hires], deg=True),
-                    "--", lw=1.5, color=cm((ev - 2.0) / 0.2))
+            f_ghz = freqs[m][mask_h] / 1e9
+            ax.plot(f_ghz, np.angle(st[m][mask_h], deg=True),
+                    "-", lw=lw, alpha=alpha, color=color)
+            ax.plot(f_ghz, np.angle(sp[m][mask_h], deg=True),
+                    "--", lw=lw, alpha=alpha, color=color)
         ax.set_ylabel(f"∠{sfx} (deg)")
         ax.grid(True, alpha=0.3)
         ax.set_xlabel("Frequency (GHz)")
+
+    # ── Error scatter ──
+    for col, (st, sp, sfx) in enumerate([
+        (s11_true, s11_pred, "S₁₁"),
+        (s21_true, s21_pred, "S₂₁"),
+    ]):
+        ax = axes[col, 2]
+        rel = np.abs(sp - st) / (np.abs(st) + 1e-15) * 100
+        sc = ax.scatter(freqs / 1e9, test_epsr_values,
+                        c=np.log10(np.clip(rel, 1e-4, 100)),
+                        s=6, cmap="plasma", alpha=0.6)
+        ax.set_xlabel("Frequency (GHz)")
+        ax.set_ylabel("εᵣ")
+        ax.set_title(f"{sfx} relative error (%)")
+        cbar = plt.colorbar(sc, ax=ax)
+        cbar.set_label("log₁₀(error %)")
 
     fig.suptitle(
         f"DNN-GP Bilateral Filter Surrogate{title_suffix}",
@@ -762,9 +821,93 @@ def bilateral_filter_dnngp(n_epsr=10, n_freqs=81, n_epochs=500,
         plot_results(
             X[val_mask, 1], s11[val_mask], s21[val_mask],
             s11_pred, s21_pred,
-            X[val_mask, 0], None,
+            X[val_mask, 0], val_epsr=val_epsr,
             path="bilat_dnngp_results.png",
             title_suffix=f" ({n_epsr} εᵣ, {n_epochs} epochs)",
         )
 
     return model, metrics
+
+
+def plot_surrogate(path="bilat_dnngp.pt", data="bilat_dnngp_data.npz",
+                   output="bilat_surrogate_plot.png", mat_file=None):
+    """Plot a trained surrogate model's predictions against ground truth.
+
+    Loads a saved DNN-GP checkpoint and the original data, then generates
+    a 6-panel figure: magnitude, phase, and error scatter for both S₁₁
+    and S₂₁ — with held-out εᵣ values shown in bold.
+
+    Parameters
+    ----------
+    path : str
+        Path to trained model checkpoint (.pt).
+    data : str
+        Path to training data (.npz) with keys ``X``, ``s11``, ``s21``.
+        Ignored if ``mat_file`` is provided.
+    output : str or None
+        Path to save the figure. If None, displays interactively.
+    mat_file : str or None
+        Path to .mat file with ``epsr``, ``freq``, ``s11``, ``s21``.
+        Overrides ``data`` when provided.
+
+    Returns
+    -------
+    metrics : dict
+        Validation metrics for the held-out set.
+    """
+    from scipy.io import loadmat
+
+    # ── Load model ──
+    print(f"Loading model from {path}...")
+    model = BilateralFilterDNNGP().load(path)
+
+    # ── Load data ──
+    if mat_file is not None:
+        d = loadmat(mat_file)
+        X = np.column_stack([d["epsr"].ravel(), d["freq"].ravel()])
+        s11 = d["s11"].ravel()
+        s21 = d["s21"].ravel()
+    else:
+        d = np.load(data)
+        X, s11, s21 = d["X"], d["s11"], d["s21"]
+
+    epsr_vals = X[:, 0]
+    epsr_unique = np.sort(np.unique(epsr_vals))
+    n_epsr = len(epsr_unique)
+    print(f"Data: {len(X)} samples ({n_epsr} εᵣ values)")
+
+    # ── Predict ──
+    print("Predicting...")
+    s11_pred, s21_pred = model.predict(X)
+
+    # ── Train/val split (matches BilateralFilterDNNGP.train) ──
+    rng = np.random.RandomState(42)
+    shuffled = epsr_unique.copy()
+    rng.shuffle(shuffled)
+    n_val = max(1, min(10, len(epsr_unique) // 3))
+    val_epsr = np.sort(shuffled[:n_val])
+    train_epsr = np.sort(epsr_unique[~np.isin(epsr_unique, val_epsr)])
+    val_mask = np.isin(epsr_vals, val_epsr)
+
+    print(f"Train: {len(train_epsr)} εᵣ  |  Held-out: {len(val_epsr)} εᵣ")
+
+    # ── Plot ──
+    plot_results(
+        X[:, 1], s11, s21, s11_pred, s21_pred,
+        epsr_vals, val_epsr=val_epsr,
+        path=output,
+        title_suffix=f" ({n_epsr} εᵣ values)",
+    )
+
+    # ── Metrics ──
+    metrics = model._metrics(
+        s11[val_mask], s21[val_mask],
+        s11_pred[val_mask], s21_pred[val_mask]
+    )
+    print(f"\n{'=' * 55}")
+    for key in ["s11_rmse", "s11_rel_pct", "s11_phase_deg",
+                 "s21_rmse", "s21_rel_pct", "s21_phase_deg"]:
+        print(f"  {key}: {metrics[key]:.3g}")
+    print(f"{'=' * 55}")
+
+    return metrics

@@ -22,6 +22,7 @@ pyFES — Python Finite Element Solver for electromagnetics.
 ### Projects
 - Bilateral filter (FEM): `python -c "from pyfes.projects import bilateral_filter; bilateral_filter()"`
 - DNN-GP surrogate: `python -c "from pyfes.projects import bilateral_filter_dnngp; bilateral_filter_dnngp(mat_file='bilat_all_sparams_50epsr.mat')"`
+- DNN-GP plot: `python -c "from pyfes.projects import plot_surrogate; plot_surrogate()"`
 - Waveguide: `python -c "from pyfes.projects import run_waveguide; run_waveguide()"`
 
 ### Venv
