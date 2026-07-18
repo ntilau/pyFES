@@ -214,7 +214,7 @@ To study the contribution of harmonic features, we trained an ablation variant u
 
 \subsection{Uncertainty Calibration}
 
-Figures~\ref{fig:uncert1} and~\ref{fig:uncert2} illustrate the predictive uncertainty for S$_{21}$ at two held-out $\varepsilon_r$ values. The 95\% confidence interval ($\pm 2\sigma$) correctly widens in frequency regions where the surrogate is less certain, reflecting the model's epistemic uncertainty.
+Figures~\ref{fig:uncert1} and~\ref{fig:uncert2} illustrate the predictive uncertainty for both S$_{11}$ and S$_{21}$ at two held-out $\varepsilon_r$ values. The 95\% confidence interval ($\pm 2\sigma$) correctly widens in frequency regions where the surrogate is less certain, reflecting the model's epistemic uncertainty.
 
 \begin{figure}[t]
 \centering
@@ -237,13 +237,13 @@ Figures~\ref{fig:uncert1} and~\ref{fig:uncert2} illustrate the predictive uncert
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{fig_uncertainty_1.png}
-\caption{S$_{21}$ predictive mean and $\pm 2\sigma$ confidence interval for $\varepsilon_r = 2.053$ (held-out). Shaded: $\pm 2\sigma$; dots: FEM ground truth.}\label{fig:uncert1}
+\caption{Predictive mean and $\pm 2\sigma$ confidence interval for $\varepsilon_r = 2.053$ (held-out). Left: S$_{11}$; right: S$_{21}$. Shaded: $\pm 2\sigma$; dots: FEM ground truth.}\label{fig:uncert1}
 \end{figure}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{fig_uncertainty_2.png}
-\caption{S$_{21}$ predictive mean and $\pm 2\sigma$ confidence interval for $\varepsilon_r = 2.196$ (held-out). Shaded: $\pm 2\sigma$; dots: FEM ground truth.}\label{fig:uncert2}
+\caption{Predictive mean and $\pm 2\sigma$ confidence interval for $\varepsilon_r = 2.196$ (held-out). Left: S$_{11}$; right: S$_{21}$. Shaded: $\pm 2\sigma$; dots: FEM ground truth.}\label{fig:uncert2}
 \end{figure}
 
 \section{Pipeline Overview}
