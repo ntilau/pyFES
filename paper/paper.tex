@@ -203,12 +203,6 @@ S$_{21}$ & $1.7\times10^{-3}$ & 0.21 & 0.05 \\
 
 Both S-parameters achieve relative errors well below 1\%. The reflection coefficient S$_{11}$ benefits from the direct Re/Im representation, which avoids the nonlinearities inherent in magnitude-phase conversion. The transmission S$_{21}$ error remains low despite the 14$\times$ amplitude range, validating the log-magnitude + detrended-phase strategy.
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=\columnwidth]{fig_s11_error.pdf}
-\caption{S$_{11}$ relative prediction error versus frequency and $\varepsilon_r$. Color scale is $\log_{10}$(error \%).}\label{fig:s11err}
-\end{figure}
-
 A single FEM solve requires approximately 2--3~seconds on an Apple M2 workstation. Generating the full 4050-sample training set takes approximately 2.5~hours. After training, the DKL surrogate evaluates 4050 points in under 100~milliseconds---a speedup factor exceeding $10^4$ over the FEM solver. Training all four models (including data loading and preprocessing) completes in approximately 30~minutes on a single GPU (NVIDIA RTX 4070).
 
 \subsection{Effect of Input Encoding}
@@ -231,11 +225,6 @@ Figures~\ref{fig:uncert1} and~\ref{fig:uncert2} show the predicted and ground tr
 \caption{DKL surrogate transmission phase $\angle S_{21}$ (degrees). Linear group delay is removed during training via per-$\varepsilon_r$ detrending and restored during inference.}\label{fig:s21phase}
 \end{figure}
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=\columnwidth]{fig_s21_error.pdf}
-\caption{S$_{21}$ relative prediction error versus frequency and $\varepsilon_r$. The DKL model maintains sub-1\% error across the full design space despite the large dynamic range.}\label{fig:s21err}
-\end{figure}
 
 \begin{figure}[t]
 \centering
