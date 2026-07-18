@@ -1,4 +1,4 @@
-"""Generate uncertainty figures: S11 + S21 overlaid, twin axes, visible bands."""
+"""Generate uncertainty figures: S11 + S21 overlaid, twin axes, proper dB CI."""
 import os
 os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
 
@@ -37,18 +37,27 @@ for ax_idx, ev in enumerate(pick):
     idx = np.argsort(f_ghz)
     f_ghz = f_ghz[idx]
 
-    s11_dB = 20 * np.log10(np.abs(s11p[idx]) + 1e-15)
+    s11_abs = np.abs(s11p[idx])
+    s21_abs = np.abs(s21p[idx])
+    s11_dB = 20 * np.log10(s11_abs + 1e-15)
+    s21_dB = 20 * np.log10(s21_abs + 1e-15)
     s11_true_dB = 20 * np.log10(np.abs(s11[m][idx]) + 1e-15)
-    s11_sig = s11_std[idx]
-
-    s21_dB = 20 * np.log10(np.abs(s21p[idx]) + 1e-15)
     s21_true_dB = 20 * np.log10(np.abs(s21[m][idx]) + 1e-15)
+    s11_sig = s11_std[idx]
     s21_sig = s21_std[idx]
+
+    # Proper dB uncertainty: ±20·log10(1 ± 3σ/|S|)
+    s11_lo = 20 * np.log10(np.maximum(s11_abs - 3 * s11_sig, 1e-15))
+    s11_hi = 20 * np.log10(s11_abs + 3 * s11_sig + 1e-15)
+    s21_lo = 20 * np.log10(np.maximum(s21_abs - 3 * s21_sig, 1e-15))
+    s21_hi = 20 * np.log10(s21_abs + 3 * s21_sig + 1e-15)
 
     fig, ax1 = plt.subplots(1, 1, figsize=figsize)
     ax2 = ax1.twinx()
 
     # ── S11 on left axis ──
+    ax1.fill_between(f_ghz, s11_lo, s11_hi, alpha=0.3, color="C0",
+                     label=r"S$_{11}$ $\pm 3\sigma$")
     ax1.plot(f_ghz, s11_dB, "-", color="C0", lw=1.8, label=r"S$_{11}$ pred")
     ax1.plot(f_ghz, s11_true_dB, "o", color="C0", ms=3, alpha=0.5, label=r"S$_{11}$ FEM")
     ax1.set_ylabel(r"|S$_{11}$| (dB)", fontsize=11, color="C0")
@@ -56,6 +65,8 @@ for ax_idx, ev in enumerate(pick):
     ax1.tick_params(axis="y", labelcolor="C0", labelsize=9)
 
     # ── S21 on right axis ──
+    ax2.fill_between(f_ghz, s21_lo, s21_hi, alpha=0.3, color="C3",
+                     label=r"S$_{21}$ $\pm 3\sigma$")
     ax2.plot(f_ghz, s21_dB, "-", color="C3", lw=1.8, label=r"S$_{21}$ pred")
     ax2.plot(f_ghz, s21_true_dB, "s", color="C3", ms=3, alpha=0.5, label=r"S$_{21}$ FEM")
     ax2.set_ylabel(r"|S$_{21}$| (dB)", fontsize=11, color="C3")
@@ -63,13 +74,12 @@ for ax_idx, ev in enumerate(pick):
     ax2.tick_params(axis="y", labelcolor="C3", labelsize=9)
 
     ax1.set_xlabel("Frequency (GHz)", fontsize=11)
-    ax1.set_title(rf"S-parameter predictions, $\varepsilon_r = {ev:.3f}$", fontsize=11)
+    ax1.set_title(rf"Predictive uncertainty, $\varepsilon_r = {ev:.3f}$", fontsize=11)
 
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labels1 + labels2,
                fontsize=7.5, loc="lower left", ncol=2)
-
     ax1.grid(True, alpha=0.25)
 
     fig.tight_layout()

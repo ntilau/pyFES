@@ -80,11 +80,8 @@ def plot_panel(ax, freqs, st, sp, epsr_vals, val_epsr,
     cbar.ax.tick_params(labelsize=8)
 
 
-def plot_error_scatter(ax, freqs, epsr_vals, st, sp, title, val_epsr=None):
-    """Error scatter plot — only held-out points."""
-    if val_epsr is not None:
-        mask = np.isin(epsr_vals, val_epsr)
-        freqs, epsr_vals, st, sp = freqs[mask], epsr_vals[mask], st[mask], sp[mask]
+def plot_error_scatter(ax, freqs, epsr_vals, st, sp, title):
+    """Error scatter plot — all data."""
     rel = np.abs(sp - st) / (np.abs(st) + 1e-15) * 100
     sc = ax.scatter(freqs / 1e9, epsr_vals,
                     c=np.log10(np.clip(rel, 1e-4, 100)),
@@ -128,10 +125,10 @@ for st, sp, sfx, prefix in [
     plt.close(fig)
     print(f"Saved {path}")
 
-    # Panel 3: error scatter (held-out only)
+    # Panel 3: error scatter
     fig, ax = plt.subplots(1, 1, figsize=figsize)
     plot_error_scatter(ax, freqs, epsr_vals, st, sp,
-                       sfx + r" relative error", val_epsr=val_epsr)
+                       sfx + r" relative error")
     ax.set_title(sfx + r" relative error", fontsize=11)
     fig.tight_layout()
     path = f"paper/fig_{prefix}_error.pdf"
