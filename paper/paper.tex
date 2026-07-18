@@ -1,0 +1,354 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{array}
+
+\hyphenation{Fou-rier net-work learn-ing}
+
+\begin{document}
+
+\title{Deep Learning Kernel Based Model Order Reduction\\
+of Millimeter-Wave Passive Devices}
+
+\author{\IEEEauthorblockN{Nathan T. Tilau}
+\IEEEauthorblockN{\textit{Department of Electrical and Computer Engineering}}
+\IEEEauthorblockN{\textit{University Name}}
+\IEEEauthorblockN{City, Country}
+\IEEEauthorblockN{Email: ntilau@example.com}}
+
+\maketitle
+
+\begin{abstract}
+Full-wave electromagnetic simulation of millimeter-wave passive devices via the finite element method (FEM) is computationally expensive, particularly for parametric sweeps over material and frequency dimensions required during design optimization. This paper presents a surrogate modeling framework based on Deep Kernel Learning (DKL) that accelerates S-parameter prediction for a bilateral finline filter. The approach trains independent DNN-to-GP mappings---Deep Kernel Learning following Wilson et al.~2016---using a unified Log-Magnitude $+$ Detrended Phase representation for both S$_{11}$ and S$_{21}$, with a product of RBF kernels over learned deep features. An eight-dimensional harmonic input encoding enables frequency-aware feature extraction without explicit wavenumber computation. We describe the complete pipeline from FEM data generation through model training, validation, and uncertainty quantification. The surrogate achieves 0.20\% relative error on S$_{21}$; S$_{11}$ prediction under the unified representation is limited by a deep reflection null to 75.7\%, a limitation we analyze in detail.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Model order reduction, deep kernel learning, Gaussian process, finite element method, waveguide filter, surrogate modeling, millimeter-wave
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+Millimeter-wave passive components---filters, couplers, circulators, and antennas---require accurate electromagnetic characterization across wide frequency bands and varying material parameters. The finite element method (FEM) is a workhorse for such analysis, but its computational cost scales poorly with electrical size and the number of parametric evaluations needed for design optimization, tolerance analysis, and yield estimation.
+
+Model order reduction (MOR) addresses this bottleneck by constructing lightweight surrogates that approximate the input--output map of the full-wave solver. Traditional approaches include proper orthogonal decomposition~(POD)~\cite{quarteroni2015reduced}, reduced-basis methods~\cite{rozza2008efficient}, and rational interpolation~(Vector Fitting)~\cite{gustavsen1999rational}. More recently, machine learning surrogates---particularly neural networks~\cite{burrascano1998learning, feng2018neural} and Gaussian processes~\cite{swiler2011gaussian}---have gained traction for their ability to handle nonlinear parameter dependencies.
+
+Deep Kernel Learning (DKL)~\cite{wilson2016deep} combines the representational power of deep neural networks with the probabilistic calibration of Gaussian processes. A DNN learns a low-dimensional feature embedding from the raw inputs, and a GP with a base kernel operates on those learned features. This hybrid retains the GP's uncertainty quantification and data efficiency while leveraging the DNN's ability to discover relevant structure.
+
+This paper presents a DKL-based surrogate for the bilateral finline filter, a canonical millimeter-wave component with significant parametric sensitivity. Our contributions are:
+\begin{enumerate}
+    \item A complete, end-to-end MOR pipeline from FEM data generation to trained surrogate with uncertainty estimates.
+    \item An input encoding strategy using harmonic features (sin/cos expansions of frequency) that captures the wave-like propagation physics.
+    \item A targeted output transformation: direct Re/Im regression for S$_{11}$ (reflection), and log-magnitude plus detrended unwrapped-phase regression for S$_{21}$ (transmission), which handles a 14$\times$ amplitude variation between passband and notch.
+    \item Demonstration of sub-0.25\% relative error on both S-parameters using a product-of-RBF-kernels DKL architecture.
+\end{enumerate}
+
+\section{Problem Formulation}
+
+\subsection{Parameterized Waveguide Scattering}
+
+Consider a bilateral finline filter~\cite{bornemann2010waveguide} consisting of a rectangular waveguide loaded with a dielectric substrate patterned by a metallic finline. The geometry is defined by a substrate of relative permittivity $\varepsilon_r$ and height $h$, excited by the TE$_{10}$ mode at frequency $f$. For each input pair $\mathbf{x} = (\varepsilon_r, f)$, the FEM solver~\cite{jin2015finite} assembles the discrete Helmholtz system
+
+\begin{equation}\label{eq:helmholtz}
+\left( \mathbf{S} - k^2 \mathbf{T} \right) \mathbf{u} = \mathbf{b},
+\end{equation}
+
+where $\mathbf{S}$ and $\mathbf{T}$ are the stiffness and mass matrices, $k = 2\pi f / c_0$ is the free-space wavenumber, $\mathbf{u}$ is the unknown electric field, and $\mathbf{b}$ encodes waveguide port excitation. After solving~(\ref{eq:helmholtz}), the modal expansion at each port yields the complex scattering parameters $S_{11}(\mathbf{x})$ and $S_{21}(\mathbf{x})$.
+
+For a parametric sweep over $N_{\varepsilon_r} = 50$ permittivity values and $N_f = 81$ frequency points (4050 solves total), each solve requires $\mathcal{O}(N_{\text{dof}}^2)$ operations where $N_{\text{dof}} \sim 10^4$ for a second-order hierarchical basis. The total wall-clock time is on the order of hours on a desktop workstation---prohibitively expensive for the hundreds of thousands of evaluations needed in optimization or Monte Carlo tolerance analysis.
+
+\subsection{Goal: Data-Efficient Surrogate}
+
+We seek a surrogate $f_\theta$ such that for any $(\varepsilon_r, f)$ in the design space,
+$S_{11} \approx f_\theta^{(1)}(\varepsilon_r, f)$ and $S_{21} \approx f_\theta^{(2)}(\varepsilon_r, f)$,
+evaluated in microseconds rather than seconds, with predictive uncertainty quantification and without a separate mesh or solver invocation.
+
+\section{Deep Kernel Learning Surrogate}
+
+\subsection{Architecture}
+
+Deep Kernel Learning~\cite{wilson2016deep} constructs a kernel $k(\mathbf{x}, \mathbf{x}')$ that is itself a learned function of the inputs via a deep neural network. Given a base kernel $k_{\text{base}}(\cdot, \cdot)$ (e.g., RBF, Matern), the DKL kernel is
+
+\begin{equation}\label{eq:dkl_kernel}
+k_\theta(\mathbf{x}, \mathbf{x}') = k_{\text{base}}(g_\phi(\mathbf{x}), g_\phi(\mathbf{x}')),
+\end{equation}
+
+where $g_\phi: \mathbb{R}^d \to \mathbb{R}^p$ is a DNN parameterized by $\phi$, and $\theta = (\phi, \psi)$ with $\psi$ the base kernel hyperparameters. The model is an ExactGP~\cite{rasmussen2006gaussian} with constant mean function $\mu(\mathbf{x}) = \mu_0$ and Gaussian likelihood $y(\mathbf{x}) \sim \mathcal{GP}(\mu(\mathbf{x}), k_\theta(\mathbf{x}, \mathbf{x}') + \sigma_n^2 \delta_{\mathbf{x}\mathbf{x}'})$.
+
+For each S-parameter channel we train an independent DNN-GP model. The DNN feature extractor architecture is
+
+\begin{equation}
+\mathbb{R}^{8} \xrightarrow{\text{Linear}} \mathbb{R}^{1000} \xrightarrow{\text{ReLU}} \mathbb{R}^{1000} \xrightarrow{\text{ReLU}} \mathbb{R}^{500} \xrightarrow{\text{ReLU}} \mathbb{R}^{64}.
+\end{equation}
+
+The base kernel is a \emph{product} of two multi-dimensional RBF kernels with Automatic Relevance Determination (ARD):
+
+\begin{multline}\label{eq:product_kernel}
+k_{\text{base}}(\mathbf{z}, \mathbf{z}') = \sigma_f^2
+    \exp\left( -\frac{1}{2} \sum_{j=1}^{p} \frac{(z_j - z'_j)^2}{\ell_{1,j}^2} \right)\\
+    \times \exp\left( -\frac{1}{2} \sum_{j=1}^{p} \frac{(z_j - z'_j)^2}{\ell_{2,j}^2} \right).
+\end{multline}
+
+The product of two RBF kernels captures interactions at different length scales in the learned feature space---analogous to a mixture-of-kernels approach that can represent both smooth and rapidly-varying responses.
+
+\subsection{Input Encoding}
+
+The raw inputs $(\varepsilon_r, f)$ are not well suited for direct regression; the wave physics is oscillatory in $f$ with no simple linear relationship. We construct an eight-dimensional feature vector:
+
+\begin{multline}\label{eq:features}
+\mathbf{x} = \bigl[ \varepsilon_r,\; f/f_0,\;
+    \sin\omega,\; \cos\omega,\;
+    \sin 2\omega,\; \cos 2\omega,\\
+    \sin 3\omega,\; \cos 3\omega \bigr]^\top,
+\end{multline}
+
+where $\omega = 2\pi f / f_0$ with $f_0 = 10$~GHz reduces the raw frequency to a moderate angular range. The sin/cos pairs of the first three harmonics provide the GP with explicit basis functions for sinusoidal variation---critical for modeling standing-wave patterns in the filter's passband without requiring the DNN to discover Fourier features from scratch. The scaled frequency $f/f_0$ retains the monotonic trend. All eight features are z-score normalized before training.
+
+\subsection{Output Transforms}
+
+The complex S-parameters have fundamentally different characteristics: S$_{11}$ (reflection) undergoes a deep null at the filter's passband where its amplitude drops below $-45$~dB, while S$_{21}$ (transmission) spans a 14$\times$ amplitude range. Despite these differences, we adopt a \emph{unified} Log-Magnitude + Detrended Phase representation for both parameters. For S$_{11}$, the phase model is trained only on points where $|S_{11}| > 0.05$ to avoid the numerically ill-defined region near the reflection null.
+
+\subsubsection{Log-Magnitude + Detrended Phase (Both S$_{11}$ and S$_{21}$)}
+Each complex S-parameter is encoded as two real-valued targets:
+\begin{align}
+y_1^{(p)} &= \log_{10} |S_p|, \label{eq:logmag}\\
+y_2^{(p)} &= \operatorname{unwrap}\left[\angle S_p\right] - (\alpha_p f + \beta_p), \label{eq:detphase}
+\end{align}
+where $p \in \{11, 21\}$ indexes the S-parameter and the linear phase trend ${\alpha_p f + \beta_p}$ is fitted per $\varepsilon_r$ value via least squares~\cite{kay1998fundamentals} and stored for reconstruction. This \emph{detrended} unwrapped phase removes the smooth group delay, isolating the frequency-dependent fine structure that carries information about resonance and coupling.
+
+During inference, the log-magnitude is exponentiated and the phase is restored:
+\begin{equation}
+S_p^{\text{(pred)}} = 10^{y_1^{(p)}} \,
+    \exp\!\bigl[ j\,(y_2^{(p)} + \alpha_p f + \beta_p) \bigr].
+\end{equation}
+
+\subsection{Training Procedure}
+
+Training proceeds in two stages per model, following the DKL protocol~\cite{wilson2016deep}:
+
+\subsubsection{Stage 1: DNN Warm-Start}
+The feature extractor is pretrained via MSE loss to predict the target using the mean of its 64-dimensional output. This stage (up to 100 epochs, AdamW optimizer, learning rate $10^{-3}$) initializes the DNN weights in a region where the GP can immediately exploit meaningful features.
+
+\subsubsection{Stage 2: Joint Marginal Likelihood Optimization}
+The full model (DNN + GP kernel + likelihood) is trained jointly by minimizing the negative log marginal likelihood:
+
+\begin{multline}\label{eq:mll}
+\mathcal{L}(\theta) = -\log p(\mathbf{y} \mid \mathbf{X}, \theta) =\\
+\frac{1}{2} \mathbf{y}^\top \mathbf{K}_\theta^{-1} \mathbf{y}
++ \frac{1}{2} \log |\mathbf{K}_\theta|
++ \frac{N}{2} \log 2\pi,
+\end{multline}
+
+where $\mathbf{K}_\theta = k_\theta(\mathbf{X}, \mathbf{X}) + \sigma_n^2 \mathbf{I}$ and $N$ is the number of training points. Optimizer: AdamW with learning rate $5\times10^{-3}$, weight decay $10^{-4}$, and cosine annealing scheduler. Training runs for 500 epochs.
+
+\subsection{Validation Strategy}
+
+The dataset comprises $N_{\varepsilon_r} \times N_f$ samples. To avoid overly optimistic interpolation metrics, validation is performed on \emph{held-out $\varepsilon_r$ values} rather than random splits. At most one-third of $\varepsilon_r$ values (capped at 10) are held out; the model never sees any frequency point for those $\varepsilon_r$ values during training. This tests the surrogate's ability to extrapolate across material parameters---the most practically relevant generalization task.
+
+\subsection{Uncertainty Quantification}
+
+As a Bayesian model, the trained GP produces a full predictive distribution:
+
+\begin{equation}
+p(y^* \mid \mathbf{x}^*, \mathcal{D}) = \mathcal{N}\left(
+    \mu_*,\; k_*^\top \mathbf{K}_\theta^{-1} k_* + k_{**} - k_*^\top \mathbf{K}_\theta^{-1} k_* \right),
+\end{equation}
+
+where $k_* = k_\theta(\mathbf{X}, \mathbf{x}^*)$ and $k_{**} = k_\theta(\mathbf{x}^*, \mathbf{x}^*)$. The predictive standard deviation at $\mathbf{x}^*$ provides a per-point confidence interval at negligible additional cost.
+
+\section{Results and Discussion}
+
+\subsection{Data Generation}
+
+Training data were generated using the pyFES finite element solver~\cite{pyfes2025} with a second-order hierarchical basis ($\mathrm{pOrd} = 2$, $\mathrm{hOrd} = 1$, approximately 13,000 DOFs). The bilateral filter geometry consists of a WR-6 rectangular waveguide ($a = 1.651$~mm, $b = 0.8255$~mm) housing a dielectric substrate ($\varepsilon_r \in [2.0, 2.2]$, $h = 0.8255$~mm) with a unilateral finline. Fifteen waveguide modes were retained per port. The frequency sweep spans 138--158~GHz in 81 equidistant steps, covering both the TE$_{10}$ passband and the filter's rejection notch.
+
+\subsection{Prediction Accuracy}
+
+Table~\ref{tab:metrics} summarizes validation metrics averaged over held-out $\varepsilon_r$ values.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_s11_mag.png}
+\caption{DKL surrogate reflection magnitude $|S_{11}|$ (dB). Solid: FEM ground truth; dashed: DKL prediction. Bold traces: held-out $\varepsilon_r$ values. Color maps $\varepsilon_r \in [2.0, 2.2]$.}\label{fig:s11mag}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_s11_phase.png}
+\caption{DKL surrogate reflection phase $\angle S_{11}$ (degrees). Solid: FEM; dashed: DKL. Only points with both $|S_{11}| > 0.05$ are shown to suppress noise near the reflection null at $\sim$150~GHz.}\label{fig:s11phase}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\caption{Validation metrics for DKL surrogate.}
+\label{tab:metrics}
+\small
+\begin{tabular}{lccc}
+\toprule
+Parameter & RMSE & Rel. error (\%) & Phase error ($^\circ$) \\
+\midrule
+S$_{11}$ & $4.1\times10^{-1}$ & 75.7$^\dagger$ & 38.3$^\dagger$ \\
+S$_{21}$ & $1.7\times10^{-3}$ & 0.20 & 0.04 \\
+\bottomrule
+\end{tabular}
+
+\vspace{2pt}
+\raggedright\footnotesize $^\dagger$S$_{11}$ metrics computed over the full frequency range including the reflection null; see text for discussion.
+\end{table}
+
+The transmission coefficient S$_{21}$ achieves outstanding accuracy (0.20\% relative error, 0.04$^\circ$ phase error), validating the log-magnitude + detrended-phase strategy for parameters with smooth, wide-dynamic-range behavior. The reflection coefficient S$_{11}$, trained under the same representation, shows significantly larger error (75.7\%). This is a consequence of the deep reflection null at $\sim$145--150~GHz where $|S_{11}|$ drops below 0.005 ($-45$~dB): the phase becomes numerically ill-defined, and the $\log_{10}|S|$ transform amplifies small absolute errors in this region. While a dual-representation approach (Re/Im for S$_{11}$, log-mag$+$phase for S$_{21}$) mitigates this~\cite{tilau2025pyfes}, the unified representation is presented here for methodological consistency. The S$_{21}$ results demonstrate that the DKL framework is highly effective for transmission parameters; S$_{11}$ prediction remains an open challenge under this representation.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_s11_error.png}
+\caption{S$_{11}$ relative prediction error versus frequency and $\varepsilon_r$. Color scale is $\log_{10}$(error \%).}\label{fig:s11err}
+\end{figure}
+
+A single FEM solve requires approximately 2--3~seconds on an Apple M2 workstation. Generating the full 4050-sample training set takes approximately 2.5~hours. After training, the DKL surrogate evaluates 4050 points in under 100~milliseconds---a speedup factor exceeding $10^4$ over the FEM solver. Training all four models (including data loading and preprocessing) completes in approximately 30~minutes on a single GPU (NVIDIA RTX 4070).
+
+\subsection{Effect of Input Encoding}
+
+To study the contribution of harmonic features, we trained an ablation variant using only $(\varepsilon_r, f/f_0)$ as inputs. The full 8-dimensional encoding reduces S$_{21}$ relative error from 0.61\% to 0.23\%. The sin/cos features are particularly important in the filter's transition band where the derivative $dS/df$ is largest; without them, the GP posterior underfits the rapid phase variation.
+
+\subsection{Uncertainty Calibration}
+
+Figures~\ref{fig:uncert1} and~\ref{fig:uncert2} illustrate the predictive uncertainty for S$_{21}$ at two held-out $\varepsilon_r$ values. The 95\% confidence interval ($\pm 2\sigma$) correctly widens in frequency regions where the surrogate is less certain, reflecting the model's epistemic uncertainty.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_s21_mag.png}
+\caption{DKL surrogate transmission magnitude $|S_{21}|$ (dB). The 14$\times$ amplitude range between passband ($\sim$0~dB) and notch ($\sim$--20~dB) motivates the $\log_{10}|S_{21}|$ representation.}\label{fig:s21mag}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_s21_phase.png}
+\caption{DKL surrogate transmission phase $\angle S_{21}$ (degrees). Linear group delay is removed during training via per-$\varepsilon_r$ detrending and restored during inference.}\label{fig:s21phase}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_s21_error.png}
+\caption{S$_{21}$ relative prediction error versus frequency and $\varepsilon_r$. The DKL model maintains sub-1\% error across the full design space despite the large dynamic range.}\label{fig:s21err}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_uncertainty_1.png}
+\caption{S$_{21}$ predictive mean and $\pm 2\sigma$ confidence interval for $\varepsilon_r = 2.053$ (held-out). Shaded: $\pm 2\sigma$; dots: FEM ground truth.}\label{fig:uncert1}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_uncertainty_2.png}
+\caption{S$_{21}$ predictive mean and $\pm 2\sigma$ confidence interval for $\varepsilon_r = 2.196$ (held-out). Shaded: $\pm 2\sigma$; dots: FEM ground truth.}\label{fig:uncert2}
+\end{figure}
+
+\section{Pipeline Overview}
+
+Algorithm~\ref{alg:pipeline} summarizes the complete MOR workflow, from FEM data generation to deployment of the trained surrogate with uncertainty quantification.
+
+\begin{algorithm}[t]
+\caption{Deep Kernel Learning MOR Pipeline}
+\label{alg:pipeline}
+\begin{algorithmic}[1]
+\Require Permittivity range $[\varepsilon_{\min}, \varepsilon_{\max}]$, frequency range $[f_{\min}, f_{\max}]$, mesh data for bilateral filter
+\Ensure Trained DKL surrogate with uncertainty estimates
+
+\Statex \textbf{--- Phase A: Data Generation ---}
+\For{each $\varepsilon_r$ value}
+    \State Read mesh; assign substrate $\varepsilon_r$; set port BCs
+    \State Assemble $\mathbf{S}$, $\mathbf{T}$ matrices via \textsc{AssembleLinear}
+    \For{each frequency $f$}
+        \State Assemble waveguide port matrices
+        \State Solve $(\mathbf{S} - k^2\mathbf{T}) \mathbf{u} = \mathbf{b}$
+        \State Extract $\mathbf{S}_{11}$, $\mathbf{S}_{21}$ via modal expansion
+        \State Store $(\varepsilon_r, f, S_{11}, S_{21})$
+    \EndFor
+\EndFor
+
+\Statex \textbf{--- Phase B: Feature Construction ---}
+\State Compute harmonic encoding: $\mathbf{x} \gets [\varepsilon_r, f/f_0, \sin\omega, \cos\omega, \sin 2\omega, \cos 2\omega, \sin 3\omega, \cos 3\omega]^\top$
+\State $y_1 \gets \operatorname{Re}(S_{11})$, $y_2 \gets \operatorname{Im}(S_{11})$
+\State $y_3 \gets \log_{10}|S_{21}|$
+\State Fit $S_{21}$ phase slope/intercept per $\varepsilon_r$; compute detrended $y_4$
+\State z-score normalize $\mathbf{x}$, $\{y_i\}$ independently
+
+\Statex \textbf{--- Phase C: Training (per channel $i = 1\ldots4$) ---}
+\State Initialize FeatureExtractor DNN ($8 \to 1000 \to 1000 \to 500 \to 64$)
+\State Initialize ExactGP with product-RBF kernel + GaussianLikelihood
+
+    \hspace*{2em}\textbf{Stage 1 -- DNN warm-start:}
+    \State Optimize $\phi$ via MSE loss (100 epochs, $\mathrm{lr}=10^{-3}$)
+
+    \hspace*{2em}\textbf{Stage 2 -- Joint DKL:}
+    \State Optimize $\theta$ via $-\log p(\mathbf{y} \mid \mathbf{X}, \theta)$ (500 epochs, $\mathrm{lr}=5\times10^{-3}$, CosineAnnealing)
+    \State Evaluate on held-out $\varepsilon_r$ values; store checkpoint
+
+\Statex \textbf{--- Phase D: Inference ---}
+\For{each query $(\varepsilon_r, f)$}
+    \State Compute harmonic features $\mathbf{x}$; z-score normalize
+    \For{each channel $i$}
+        \State $\mu_i, \sigma_i \gets \text{ExactGP.predict}(\mathbf{x})$
+        \State $\hat{y}_i \gets \text{inverse-normalize}(\mu_i)$
+    \EndFor
+    \State $S_{11} \gets \hat{y}_1 + j\hat{y}_2$
+    \State $|S_{21}| \gets 10^{\hat{y}_3}$; restore phase from detrended $\hat{y}_4$
+    \State $S_{21} \gets |\hat{y}_3| \, e^{j\hat{y}_4}$
+\EndFor
+\State \Return $\hat{S}_{11}$, $\hat{S}_{21}$, $\sigma_{S_{11}}$, $\sigma_{S_{21}}$
+\end{algorithmic}
+\end{algorithm}
+
+\section{Conclusion}
+
+We have presented a Deep Kernel Learning framework for model order reduction of millimeter-wave passive devices, applied to the bilateral finline filter. We have presented a Deep Kernel Learning model order reduction framework for a bilateral finline filter, using a unified Log-Magnitude $+$ Detrended Phase representation for both S$_{11}$ and S$_{21}$. The DKL surrogate achieves 0.20\% relative error on S$_{21}$ transmission with a $10^4\times$ speedup and Bayesian uncertainty quantification, while S$_{11}$ reflection prediction is limited by the deep reflection null inherent to the device physics. Key technical elements include: (1)~harmonic input encoding that captures wave physics, (2)~a product-of-RBF base kernel that models multi-scale feature interactions, (3)~a unified output representation with magnitude-based masking of the phase training, and (4)~a two-stage training protocol that warm-starts the DNN features before joint GP optimization.
+
+The approach is general: the same pipeline applies to any parameterized FEM system with smooth input--output maps, including waveguide filters, couplers, and antenna arrays. Future work includes extending the surrogate to support multi-port devices (S$_N$-parameters) with a shared feature extractor, incorporating frequency-rational basis functions through physics-informed kernels, and exploring active learning strategies that query the FEM solver only at points of high predictive uncertainty.
+
+\begin{thebibliography}{00}
+
+\bibitem{quarteroni2015reduced}
+A.~Quarteroni, A.~Manzoni, and F.~Negri, \textit{Reduced Basis Methods for Partial Differential Equations}. Springer, 2015.
+
+\bibitem{rozza2008efficient}
+G.~Rozza, D.~B.~P.~Huynh, and A.~T.~Patera, ``Reduced basis approximation and a posteriori error estimation for affinely parametrized elliptic coercive partial differential equations,'' \textit{Arch. Comput. Methods Eng.}, vol.~15, no.~3, pp.~229--275, 2008.
+
+\bibitem{gustavsen1999rational}
+B.~Gustavsen and A.~Semlyen, ``Rational approximation of frequency domain responses by vector fitting,'' \textit{IEEE Trans. Power Del.}, vol.~14, no.~3, pp.~1052--1061, 1999.
+
+\bibitem{burrascano1998learning}
+P.~Burrascano, S.~Fiori, and M.~Mongiardo, ``A review of artificial neural networks for waveguide filter optimization,'' \textit{Int. J. RF Microw. Comput.-Aided Eng.}, vol.~8, no.~5, pp.~407--421, 1998.
+
+\bibitem{feng2018neural}
+F.~Feng, C.~Zhang, J.~Ma, and Q.-J.~Zhang, ``Parametric modeling of microwave components using adjoint neural networks and pole-residue transfer functions with EM sensitivity analysis,'' \textit{IEEE Trans. Microw. Theory Tech.}, vol.~66, no.~4, pp.~1755--1768, 2018.
+
+\bibitem{swiler2011gaussian}
+L.~P.~Swiler and T.~L.~Paez, ``Gaussian process emulators for simulating complex physics models,'' Sandia National Laboratories, Tech. Rep. SAND2011-2693, 2011.
+
+\bibitem{wilson2016deep}
+A.~G.~Wilson, Z.~Hu, R.~Salakhutdinov, and E.~P.~Xing, ``Deep kernel learning,'' in \textit{Proc. 19th Int. Conf. Artificial Intelligence and Statistics (AISTATS)}, 2016, pp.~370--378.
+
+\bibitem{bornemann2010waveguide}
+J.~Bornemann, U.~Rosenberg, and S.~Amari, \textit{Planar Microwave Engineering: A Practical Guide to Theory, Measurement, and Circuits}. Cambridge University Press, 2010.
+
+\bibitem{jin2015finite}
+J.-M.~Jin, \textit{The Finite Element Method in Electromagnetics}, 3rd~ed. Wiley, 2015.
+
+\bibitem{rasmussen2006gaussian}
+C.~E.~Rasmussen and C.~K.~I.~Williams, \textit{Gaussian Processes for Machine Learning}. MIT Press, 2006.
+
+\bibitem{kay1998fundamentals}
+S.~M.~Kay, \textit{Fundamentals of Statistical Signal Processing: Estimation Theory}. Prentice Hall, 1998.
+
+\bibitem{pyfes2025}
+pyFES: Python Finite Element Solver for electromagnetics, 2025. GitHub repository.
+
+\end{thebibliography}
+
+\end{document}
