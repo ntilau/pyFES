@@ -173,13 +173,13 @@ Table~\ref{tab:metrics} summarizes validation metrics averaged over held-out $\v
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig_s11_mag.png}
+\includegraphics[width=\columnwidth]{fig_s11_mag.pdf}
 \caption{DKL surrogate reflection magnitude $|S_{11}|$ (dB). Solid: FEM ground truth; dashed: DKL prediction. Bold traces: held-out $\varepsilon_r$ values. Color maps $\varepsilon_r \in [2.0, 2.2]$.}\label{fig:s11mag}
 \end{figure}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig_s11_phase.png}
+\includegraphics[width=\columnwidth]{fig_s11_phase.pdf}
 \caption{DKL surrogate reflection phase $\angle S_{11}$ (degrees). Solid: FEM; dashed: DKL. Only points with both $|S_{11}| > 0.05$ are shown to suppress noise near the reflection null at $\sim$150~GHz.}\label{fig:s11phase}
 \end{figure}
 
@@ -202,7 +202,7 @@ Both S-parameters achieve relative errors well below 1\%. The reflection coeffic
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig_s11_error.png}
+\includegraphics[width=\columnwidth]{fig_s11_error.pdf}
 \caption{S$_{11}$ relative prediction error versus frequency and $\varepsilon_r$. Color scale is $\log_{10}$(error \%).}\label{fig:s11err}
 \end{figure}
 
@@ -218,31 +218,31 @@ Figures~\ref{fig:uncert1} and~\ref{fig:uncert2} illustrate the predictive uncert
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig_s21_mag.png}
+\includegraphics[width=\columnwidth]{fig_s21_mag.pdf}
 \caption{DKL surrogate transmission magnitude $|S_{21}|$ (dB). The 14$\times$ amplitude range between passband ($\sim$0~dB) and notch ($\sim$--20~dB) motivates the $\log_{10}|S_{21}|$ representation.}\label{fig:s21mag}
 \end{figure}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig_s21_phase.png}
+\includegraphics[width=\columnwidth]{fig_s21_phase.pdf}
 \caption{DKL surrogate transmission phase $\angle S_{21}$ (degrees). Linear group delay is removed during training via per-$\varepsilon_r$ detrending and restored during inference.}\label{fig:s21phase}
 \end{figure}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig_s21_error.png}
+\includegraphics[width=\columnwidth]{fig_s21_error.pdf}
 \caption{S$_{21}$ relative prediction error versus frequency and $\varepsilon_r$. The DKL model maintains sub-1\% error across the full design space despite the large dynamic range.}\label{fig:s21err}
 \end{figure}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig_uncertainty_1.png}
+\includegraphics[width=\columnwidth]{fig_uncertainty_1.pdf}
 \caption{Predictive mean and $\pm 3\sigma$ confidence interval for S$_{11}$ and S$_{21}$ at $\varepsilon_r = 2.053$ (held-out). Shaded bands: $\pm 3\sigma$; markers: FEM ground truth.}\label{fig:uncert1}
 \end{figure}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{fig_uncertainty_2.png}
+\includegraphics[width=\columnwidth]{fig_uncertainty_2.pdf}
 \caption{Predictive mean and $\pm 3\sigma$ confidence interval for S$_{11}$ and S$_{21}$ at $\varepsilon_r = 2.196$ (held-out). Shaded bands: $\pm 3\sigma$; markers: FEM ground truth.}\label{fig:uncert2}
 \end{figure}
 

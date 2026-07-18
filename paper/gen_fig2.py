@@ -81,8 +81,8 @@ for ax_idx, ev in enumerate(pick):
     ax1.grid(True, alpha=0.25)
 
     fig.tight_layout()
-    path = f"paper/fig_uncertainty_{ax_idx + 1}.png"
-    fig.savefig(path, dpi=200, bbox_inches="tight")
+    path = f"paper/fig_uncertainty_{ax_idx + 1}.pdf"
+    fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved {path}")
 
