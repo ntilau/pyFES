@@ -217,7 +217,7 @@ To study the contribution of harmonic features, we trained an ablation variant u
 
 \subsection{Uncertainty Calibration}
 
-Figures~\ref{fig:uncert1} and~\ref{fig:uncert2} show predicted versus ground truth S-parameters for two held-out $\varepsilon_r$ values.
+Figures~\ref{fig:uncert1} and~\ref{fig:uncert2} show the relative prediction error in dB for two held-out $\varepsilon_r$ values, computed as $20\log_{10}(1 + |\Delta S|/|S_{\mathrm{true}}|)$.
 
 \begin{figure}[t]
 \centering
@@ -240,13 +240,13 @@ Figures~\ref{fig:uncert1} and~\ref{fig:uncert2} show predicted versus ground tru
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{fig_uncertainty_1.pdf}
-\caption{Overlaid S$_{11}$ and S$_{21}$ predictions at $\varepsilon_r = 2.053$ (held-out). Solid lines: DKL prediction; markers: FEM ground truth.}\label{fig:uncert1}
+\caption{RMSE curves for S$_{11}$ and S$_{21}$ at $\varepsilon_r = 2.053$ (held-out). Error: $20\log_{10}(1 + |S_{\mathrm{pred}} - S_{\mathrm{true}}|/|S_{\mathrm{true}}|)$.}\label{fig:uncert1}
 \end{figure}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{fig_uncertainty_2.pdf}
-\caption{Overlaid S$_{11}$ and S$_{21}$ predictions at $\varepsilon_r = 2.196$ (held-out). Solid lines: DKL prediction; markers: FEM ground truth.}\label{fig:uncert2}
+\caption{RMSE curves for S$_{11}$ and S$_{21}$ at $\varepsilon_r = 2.196$ (held-out).}\label{fig:uncert2}
 \end{figure}
 
 \section{Pipeline Overview}
