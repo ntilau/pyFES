@@ -36,7 +36,7 @@ for ax_idx, ev in enumerate(pick):
     print(f"Plotting S21 uncertainty for epsr = {ev:.4f}")
     m = np.isin(epsr_vals, [ev])
 
-    s21p, s21_std, _, _ = model.predict_with_uncertainty(X[m])
+    _, _, s21p, s21_std = model.predict_with_uncertainty(X[m])
 
     f_ghz = freqs[m] / 1e9
     idx = np.argsort(f_ghz)
