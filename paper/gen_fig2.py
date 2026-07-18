@@ -50,9 +50,9 @@ for ax_idx, ev in enumerate(pick):
     # S11 uncertainty band + mean + truth
     ax.fill_between(
         f_ghz,
-        20 * np.log10(np.abs(s11_pred) + 1e-15) - 2 * s11_sigma,
-        20 * np.log10(np.abs(s11_pred) + 1e-15) + 2 * s11_sigma,
-        alpha=0.15, color="C0", label=r"S$_{11}$ $\pm 2\sigma$",
+        20 * np.log10(np.abs(s11_pred) + 1e-15) - 3 * s11_sigma,
+        20 * np.log10(np.abs(s11_pred) + 1e-15) + 3 * s11_sigma,
+        alpha=0.15, color="C0", label=r"S$_{11}$ $\pm 3\sigma$",
     )
     ax.plot(f_ghz, 20 * np.log10(np.abs(s11_pred) + 1e-15),
             "-", color="C0", linewidth=1.5, label=r"S$_{11}$ pred")
@@ -63,9 +63,9 @@ for ax_idx, ev in enumerate(pick):
     # S21 uncertainty band + mean + truth
     ax.fill_between(
         f_ghz,
-        20 * np.log10(np.abs(s21_pred) + 1e-15) - 2 * s21_sigma,
-        20 * np.log10(np.abs(s21_pred) + 1e-15) + 2 * s21_sigma,
-        alpha=0.15, color="C3", label=r"S$_{21}$ $\pm 2\sigma$",
+        20 * np.log10(np.abs(s21_pred) + 1e-15) - 3 * s21_sigma,
+        20 * np.log10(np.abs(s21_pred) + 1e-15) + 3 * s21_sigma,
+        alpha=0.15, color="C3", label=r"S$_{21}$ $\pm 3\sigma$",
     )
     ax.plot(f_ghz, 20 * np.log10(np.abs(s21_pred) + 1e-15),
             "-", color="C3", linewidth=1.5, label=r"S$_{21}$ pred")
