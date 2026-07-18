@@ -47,21 +47,21 @@ for ax_idx, ev in enumerate(pick):
     s21_sig = s21_std[idx]
 
     # S11: linear-magnitude std → dB CI: 20·log10(|S| ± 3σ)
-    s11_lo = 20 * np.log10(np.maximum(s11_abs - 3 * s11_sig, 1e-15))
-    s11_hi = 20 * np.log10(s11_abs + 3 * s11_sig + 1e-15)
+    s11_lo = 20 * np.log10(np.maximum(s11_abs - 2 * s11_sig, 1e-15))
+    s11_hi = 20 * np.log10(s11_abs + 2 * s11_sig + 1e-15)
 
     # S21: model trained on log10|S|.  σ_y = s21_std / (|S|·ln(10))
     #       dB CI = 20·(log10|S| ± 3·σ_y) = s21_dB ± 60·σ_y
     s21_sig_log10 = s21_sig / (np.maximum(s21_abs, 1e-15) * np.log(10))
-    s21_lo = s21_dB - 60 * s21_sig_log10
-    s21_hi = s21_dB + 60 * s21_sig_log10
+    s21_lo = s21_dB - 40 * s21_sig_log10
+    s21_hi = s21_dB + 40 * s21_sig_log10
 
     fig, ax1 = plt.subplots(1, 1, figsize=figsize)
     ax2 = ax1.twinx()
 
     # ── S11 on left axis ──
     ax1.fill_between(f_ghz, s11_lo, s11_hi, alpha=0.3, color="C0",
-                     label=r"S$_{11}$ $\pm 3\sigma$")
+                     label=r"S$_{11}$ $\pm 2\sigma$")
     ax1.plot(f_ghz, s11_dB, "-", color="C0", lw=1.8, label=r"S$_{11}$ pred")
     ax1.plot(f_ghz, s11_true_dB, "o", color="C0", ms=3, alpha=0.5, label=r"S$_{11}$ FEM")
     ax1.set_ylabel(r"|S$_{11}$| (dB)", fontsize=11, color="C0")
@@ -70,7 +70,7 @@ for ax_idx, ev in enumerate(pick):
 
     # ── S21 on right axis ──
     ax2.fill_between(f_ghz, s21_lo, s21_hi, alpha=0.3, color="C3",
-                     label=r"S$_{21}$ $\pm 3\sigma$")
+                     label=r"S$_{21}$ $\pm 2\sigma$")
     ax2.plot(f_ghz, s21_dB, "-", color="C3", lw=1.8, label=r"S$_{21}$ pred")
     ax2.plot(f_ghz, s21_true_dB, "s", color="C3", ms=3, alpha=0.5, label=r"S$_{21}$ FEM")
     ax2.set_ylabel(r"|S$_{21}$| (dB)", fontsize=11, color="C3")
