@@ -46,11 +46,15 @@ for ax_idx, ev in enumerate(pick):
     s11_sig = s11_std[idx]
     s21_sig = s21_std[idx]
 
-    # Proper dB uncertainty: ±20·log10(1 ± 3σ/|S|)
+    # S11: linear-magnitude std → dB CI: 20·log10(|S| ± 3σ)
     s11_lo = 20 * np.log10(np.maximum(s11_abs - 3 * s11_sig, 1e-15))
     s11_hi = 20 * np.log10(s11_abs + 3 * s11_sig + 1e-15)
-    s21_lo = 20 * np.log10(np.maximum(s21_abs - 3 * s21_sig, 1e-15))
-    s21_hi = 20 * np.log10(s21_abs + 3 * s21_sig + 1e-15)
+
+    # S21: model trained on log10|S|.  σ_y = s21_std / (|S|·ln(10))
+    #       dB CI = 20·(log10|S| ± 3·σ_y) = s21_dB ± 60·σ_y
+    s21_sig_log10 = s21_sig / (np.maximum(s21_abs, 1e-15) * np.log(10))
+    s21_lo = s21_dB - 60 * s21_sig_log10
+    s21_hi = s21_dB + 60 * s21_sig_log10
 
     fig, ax1 = plt.subplots(1, 1, figsize=figsize)
     ax2 = ax1.twinx()
