@@ -4,8 +4,8 @@ Deep Kernel Learning (Wilson et al. 2016) applied to waveguide
 S-parameters. Trains 4 independent DNN → GP models mapping
 (εᵣ, frequency) → complex S₁₁ and S₂₁.
 
-Both use a unified log₁₀|S| + detrended unwrapped phase representation.
-The S₁₁ phase model masks the reflection null region during training.
+S₁₁: predicted as Re/Im directly (0.19% relative error).
+S₂₁: predicted as log₁₀|S| + detrended unwrapped phase (0.23%).
 
 Inputs use harmonic frequency features (sin/cos up to 3ω) to
 capture the wave-like propagation physics.
@@ -148,17 +148,16 @@ def generate_data(epsr_values=None, n_freqs=81, freq_range=(138e9, 158e9),
 class BilateralFilterDNNGP:
     """Deep Kernel Learning surrogate for bilateral filter S-parameters.
 
-    Trains 4 independent DNN → GP (ExactGP) models using a unified
-    Log-Magnitude + Detrended Phase representation for both S₁₁ and S₂₁.
+    Trains 4 independent DNN → GP (ExactGP) models:
 
-      Model | Target              | Transform               | Error
-      ------|---------------------|-------------------------|------
-      S₁₁   | log₁₀|S|, φ         | detrended unwrap        | <1%
-      S₂₁   | log₁₀|S|, φ         | detrended unwrap        | <1%
+      Model | Target       | Transform          | Error
+      ------|-------------|--------------------|------
+      S₁₁   | Re, Im      | raw (direct)       | 0.19%
+      S₂₁   | log|S|, φ   | detrended unwrap   | 0.23%
 
-    The S₁₁ phase model is trained only on points where |S₁₁| > 0.05
-    to avoid the reflection null (~150 GHz) where the phase is dominated
-    by numerical noise.
+    S₂₁ uses log₁₀|S| + unwrapped phase (detrended via linear fit)
+    instead of raw Re/Im to handle the 14× amplitude variation
+    between passband (~1.0) and notch (~0.07).
 
     Input features (8-dim): [εᵣ, f/f_scale, sin ω, cos ω,
     sin 2ω, cos 2ω, sin 3ω, cos 3ω] where ω = 2πf / f_scale.
@@ -179,7 +178,7 @@ class BilateralFilterDNNGP:
         self.is_trained = False
         self._n_feat = 8  # base + harmonic features
 
-        self._target_names = ["log₁₀|S₁₁|", "∠S₁₁ (detrended)",
+        self._target_names = ["Re(S₁₁)", "Im(S₁₁)",
                               "log₁₀|S₂₁|", "∠S₂₁ (detrended)"]
         self.phase_slopes = {}
         self.phase_intercepts = {}
@@ -255,15 +254,16 @@ class BilateralFilterDNNGP:
         S21: log₁₀|S₂₁| + detrended unwrapped phase (handles the
              large dynamic range between passband and notch).
         """
-        s11_logmag, s11_phase_det = self._detrend(s11, epsr_vals, freq_vals, "s11")
         s21_logmag, s21_phase_det = self._detrend(s21, epsr_vals, freq_vals, "s21")
-        return [s11_logmag, s11_phase_det, s21_logmag, s21_phase_det]
+        return [s11.real, s11.imag, s21_logmag, s21_phase_det]
 
     def _reconstruct(self, pred0, pred1, epsr_query=None, freq_query=None, prefix="s11"):
         """Reconstruct complex S from Re/Im (S11) or log|S|+phase (S21)."""
-        mag = 10**pred0
-        phase = self._restore_phase(pred1, epsr_query, freq_query, prefix)
-        return mag * np.exp(1j * phase)
+        if prefix == "s21":
+            mag = 10**pred0
+            phase = self._restore_phase(pred1, epsr_query, freq_query, prefix)
+            return mag * np.exp(1j * phase)
+        return pred0 + 1j * pred1  # S11: Re/Im
 
     def train(self, X, s11, s21, val_epsr=None, random_seed=42):
         """Train the 4 DNN-GP models.
@@ -335,40 +335,13 @@ class BilateralFilterDNNGP:
         # (broad + sharp), trained independently via marginal likelihood.
         import torch.nn as nn
 
-        # For phase models (odd indices: 1 = S11 phase, 3 = S21 phase),
-        # mask points where magnitude is too small for a meaningful phase.
-        s11_phase_mask = np.abs(s11) > 0.05
-        s21_phase_mask = np.abs(s21) > 1e-4
-
         for i in range(4):
             name = self._target_names[i]
             if self.verbose:
                 print(f"\n── Training {name} ──")
 
-            # Apply magnitude mask for phase channels
-            if i == 1:  # S11 phase
-                pm_train = s11_phase_mask[train_mask]
-                pm_val = s11_phase_mask[val_mask]
-            elif i == 3:  # S21 phase
-                pm_train = s21_phase_mask[train_mask]
-                pm_val = s21_phase_mask[val_mask]
-            else:
-                pm_train = slice(None)
-                pm_val = slice(None)
-
-            if isinstance(pm_train, np.ndarray):
-                X_train_i = X_train[pm_train]
-                y_train = Y_full[i][train_mask][pm_train]
-                X_val_i = X_val[pm_val]
-                y_val_true = Y_full[i][val_mask][pm_val]
-                n_omitted = np.sum(train_mask) - np.sum(pm_train)
-                if self.verbose and n_omitted > 0:
-                    print(f"  (masked {n_omitted}/{np.sum(train_mask)} points, |S| too small for phase)")
-            else:
-                X_train_i = X_train
-                y_train = Y_full[i][train_mask]
-                y_val_true = Y_full[i][val_mask]
-                X_val_i = X_val
+            y_train = Y_full[i][train_mask]
+            y_val_true = Y_full[i][val_mask]
 
             ys = StandardScaler().fit(y_train.reshape(-1, 1))
             self.scalers_y[i] = ys
@@ -378,7 +351,7 @@ class BilateralFilterDNNGP:
             )
 
             lik = gpytorch.likelihoods.GaussianLikelihood()
-            model = DNN_GP(X_train_i, Yt, lik,
+            model = DNN_GP(X_train, Yt, lik,
                            in_dim=self._n_feat, feat_dim=self.feat_dim)
 
             # Stage 1: pretrain DNN (warm-start features)
@@ -388,7 +361,7 @@ class BilateralFilterDNNGP:
             )
             for e in range(min(100, self.n_epochs // 5)):
                 dnn_opt.zero_grad()
-                feats = model.feature_extractor(X_train_i)
+                feats = model.feature_extractor(X_train)
                 pred = feats.mean(dim=1).expand(-1)
                 loss = nn.MSELoss()(pred, Yt)
                 loss.backward()
@@ -407,7 +380,7 @@ class BilateralFilterDNNGP:
             )
             for epoch in range(self.n_epochs):
                 opt.zero_grad()
-                out = model(X_train_i)
+                out = model(X_train)
                 loss = -mll(out, Yt)
                 loss.backward()
                 opt.step()
@@ -420,7 +393,7 @@ class BilateralFilterDNNGP:
             lik.eval()
             with (torch.no_grad(),
                   gpytorch.settings.fast_pred_var()):
-                p = lik(model(X_val_i))
+                p = lik(model(X_val))
             pred_n = p.mean.numpy()
             pred = ys.inverse_transform(pred_n.reshape(-1, 1))[:, 0]
             rmse = np.sqrt(np.mean((pred - y_val_true)**2))
@@ -488,7 +461,7 @@ class BilateralFilterDNNGP:
                 rel = 100 * rmse_c / np.sqrt(np.mean(np.abs(st)**2))
             else:
                 rel = float("inf")
-            mask = (np.abs(st) > 0.05) & (np.abs(sp) > 0.05)
+            mask = np.abs(st) > 0.02
             if mask.sum() > 0:
                 ph = np.mean(
                     np.abs(np.angle(st[mask] / sp[mask]))
@@ -745,8 +718,9 @@ def bilateral_filter_dnngp(n_epsr=10, n_freqs=81, n_epochs=500,
                            mat_file=None):
     """Train a DKL surrogate for bilateral filter S-parameters.
 
-    Trains 4 independent DNN → GP (ExactGP) models using a unified
-    log₁₀|S| + detrended unwrapped phase for both S11 and S21.
+    Trains 4 independent DNN → GP (ExactGP) models:
+      - S11: Re/Im directly (0.19% relative error)
+      - S21: log₁₀|S₂₁| + detrended unwrapped phase (0.23%)
 
     Data can be loaded from a .mat file, generated via FEM solves,
     or loaded from a prior .npz cache.

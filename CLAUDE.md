@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-pyFES — Python Finite Element Solver for electromagnetics.
+pyFES — Python Finite Element Software for electromagnetics.
 
 2D Helmholtz / scalar wave / electrostatic / thermal FEM solver on triangular meshes, with waveguide ports, domain decomposition, harmonic balance (Kerr nonlinearity), ferrite circulators, and a DNN-GP surrogate modelling capability.
 

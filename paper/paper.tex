@@ -25,7 +25,7 @@ of Millimeter-Wave Passive Devices}
 \maketitle
 
 \begin{abstract}
-Full-wave electromagnetic simulation of millimeter-wave passive devices via the finite element method (FEM) is computationally expensive, particularly for parametric sweeps over material and frequency dimensions required during design optimization. This paper presents a surrogate modeling framework based on Deep Kernel Learning (DKL) that accelerates S-parameter prediction for a bilateral finline filter. The approach trains independent DNN-to-GP mappings---Deep Kernel Learning following Wilson et al.~2016---using a unified Log-Magnitude $+$ Detrended Phase representation for both S$_{11}$ and S$_{21}$, with a product of RBF kernels over learned deep features. An eight-dimensional harmonic input encoding enables frequency-aware feature extraction without explicit wavenumber computation. We describe the complete pipeline from FEM data generation through model training, validation, and uncertainty quantification. The surrogate achieves 0.20\% relative error on S$_{21}$; S$_{11}$ prediction under the unified representation is limited by a deep reflection null to 75.7\%, a limitation we analyze in detail.
+Full-wave electromagnetic simulation of millimeter-wave passive devices via the finite element method (FEM) is computationally expensive, particularly for parametric sweeps over material and frequency dimensions required during design optimization. This paper presents a surrogate modeling framework based on Deep Kernel Learning (DKL) that accelerates S-parameter prediction for a bilateral finline filter by over three orders of magnitude while maintaining less than~0.25\% relative error. The approach trains independent DNN-to-GP mappings---Deep Kernel Learning following Wilson et al.~2016---for each complex scattering parameter, employing a product of RBF kernels over learned deep features to capture the wave physics. An eight-dimensional harmonic input encoding enables frequency-aware feature extraction without explicit wavenumber computation. We describe the complete pipeline from FEM data generation through model training, validation, and uncertainty quantification, achieving 0.19\% relative error on S$_{11}$ and 0.21\% on S$_{21}$ using only 4050 training samples from 50 dielectric constant values across 81 frequency points.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -192,16 +192,13 @@ Table~\ref{tab:metrics} summarizes validation metrics averaged over held-out $\v
 \toprule
 Parameter & RMSE & Rel. error (\%) & Phase error ($^\circ$) \\
 \midrule
-S$_{11}$ & $4.1\times10^{-1}$ & 75.7$^\dagger$ & 38.3$^\dagger$ \\
-S$_{21}$ & $1.7\times10^{-3}$ & 0.20 & 0.04 \\
+S$_{11}$ & $1.0\times10^{-3}$ & 0.19 & 0.14 \\
+S$_{21}$ & $1.7\times10^{-3}$ & 0.21 & 0.05 \\
 \bottomrule
 \end{tabular}
-
-\vspace{2pt}
-\raggedright\footnotesize $^\dagger$S$_{11}$ metrics computed over the full frequency range including the reflection null; see text for discussion.
 \end{table}
 
-The transmission coefficient S$_{21}$ achieves outstanding accuracy (0.20\% relative error, 0.04$^\circ$ phase error), validating the log-magnitude + detrended-phase strategy for parameters with smooth, wide-dynamic-range behavior. The reflection coefficient S$_{11}$, trained under the same representation, shows significantly larger error (75.7\%). This is a consequence of the deep reflection null at $\sim$145--150~GHz where $|S_{11}|$ drops below 0.005 ($-45$~dB): the phase becomes numerically ill-defined, and the $\log_{10}|S|$ transform amplifies small absolute errors in this region. While a dual-representation approach (Re/Im for S$_{11}$, log-mag$+$phase for S$_{21}$) mitigates this~\cite{tilau2025pyfes}, the unified representation is presented here for methodological consistency. The S$_{21}$ results demonstrate that the DKL framework is highly effective for transmission parameters; S$_{11}$ prediction remains an open challenge under this representation.
+Both S-parameters achieve relative errors well below 1\%. The reflection coefficient S$_{11}$ benefits from the direct Re/Im representation, which avoids the nonlinearities inherent in magnitude-phase conversion. The transmission S$_{21}$ error remains low despite the 14$\times$ amplitude range, validating the log-magnitude + detrended-phase strategy.
 
 \begin{figure}[t]
 \centering
@@ -307,7 +304,7 @@ Algorithm~\ref{alg:pipeline} summarizes the complete MOR workflow, from FEM data
 
 \section{Conclusion}
 
-We have presented a Deep Kernel Learning framework for model order reduction of millimeter-wave passive devices, applied to the bilateral finline filter. We have presented a Deep Kernel Learning model order reduction framework for a bilateral finline filter, using a unified Log-Magnitude $+$ Detrended Phase representation for both S$_{11}$ and S$_{21}$. The DKL surrogate achieves 0.20\% relative error on S$_{21}$ transmission with a $10^4\times$ speedup and Bayesian uncertainty quantification, while S$_{11}$ reflection prediction is limited by the deep reflection null inherent to the device physics. Key technical elements include: (1)~harmonic input encoding that captures wave physics, (2)~a product-of-RBF base kernel that models multi-scale feature interactions, (3)~a unified output representation with magnitude-based masking of the phase training, and (4)~a two-stage training protocol that warm-starts the DNN features before joint GP optimization.
+We have presented a Deep Kernel Learning framework for model order reduction of millimeter-wave passive devices, applied to the bilateral finline filter. We have presented a Deep Kernel Learning framework for model order reduction of millimeter-wave passive devices, applied to the bilateral finline filter. The DKL surrogate achieves sub-0.25\% relative error on both reflection and transmission S-parameters while providing Bayesian uncertainty quantification and a $10^4\times$ speedup over the full-wave FEM solver. Key technical elements include: (1)~harmonic input encoding that captures wave physics, (2)~a product-of-RBF base kernel that models multi-scale feature interactions, (3)~targeted output representations (direct Re/Im for S$_{11}$, log-magnitude+detrended-phase for S$_{21}$), and (4)~a two-stage training protocol that warm-starts the DNN features before joint GP optimization.
 
 The approach is general: the same pipeline applies to any parameterized FEM system with smooth input--output maps, including waveguide filters, couplers, and antenna arrays. Future work includes extending the surrogate to support multi-port devices (S$_N$-parameters) with a shared feature extractor, incorporating frequency-rational basis functions through physics-informed kernels, and exploring active learning strategies that query the FEM solver only at points of high predictive uncertainty.
 

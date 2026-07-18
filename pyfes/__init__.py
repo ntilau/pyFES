@@ -1,4 +1,4 @@
-# pyFES - Python Finite Element Solver for Electromagnetics
+# pyFES - Python Finite Element Software for Electromagnetics
 from . import constants
 from . import mesh
 from . import fem

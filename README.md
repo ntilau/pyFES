@@ -1,6 +1,6 @@
 # pyFES
 
-Python Finite Element Solver for electromagnetics.
+Python Finite Element Software for electromagnetics.
 
 Solves 2D Helmholtz / scalar wave / electrostatic / thermal problems on triangular meshes, with support for waveguide ports, domain decomposition (Schur complements), harmonic balance (Kerr nonlinearity), and ferrite circulators.
 
