@@ -1,4 +1,4 @@
-"""Generate uncertainty figures: S11 + S21 overlaid in single panel each."""
+"""Generate uncertainty figures: S11 + S21 overlaid, twin axes, visible bands."""
 import os
 os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
 
@@ -26,70 +26,59 @@ n_val = max(1, min(10, len(epsr_unique) // 3))
 val_epsr = np.sort(shuffled[:n_val])
 
 pick = [val_epsr[0], val_epsr[-1]]
-
-figsize = (4.8, 3.2)
+figsize = (5.2, 3.4)
 
 for ax_idx, ev in enumerate(pick):
     print(f"Plotting S11 + S21 uncertainty for epsr = {ev:.4f}")
     m = np.isin(epsr_vals, [ev])
-
     s11p, s11_std, s21p, s21_std = model.predict_with_uncertainty(X[m])
 
     f_ghz = freqs[m] / 1e9
     idx = np.argsort(f_ghz)
     f_ghz = f_ghz[idx]
-    s11_true = s11[m][idx]
-    s11_pred = s11p[idx]
-    s11_sigma = s11_std[idx]
-    s21_true = s21[m][idx]
-    s21_pred = s21p[idx]
-    s21_sigma = s21_std[idx]
+
+    s11_dB = 20 * np.log10(np.abs(s11p[idx]) + 1e-15)
+    s11_true_dB = 20 * np.log10(np.abs(s11[m][idx]) + 1e-15)
+    s11_sig = s11_std[idx]
+
+    s21_dB = 20 * np.log10(np.abs(s21p[idx]) + 1e-15)
+    s21_true_dB = 20 * np.log10(np.abs(s21[m][idx]) + 1e-15)
+    s21_sig = s21_std[idx]
 
     fig, ax1 = plt.subplots(1, 1, figsize=figsize)
     ax2 = ax1.twinx()
 
-    # S11 on left axis (ax1)
-    ax1.fill_between(
-        f_ghz,
-        20 * np.log10(np.abs(s11_pred) + 1e-15) - 3 * s11_sigma,
-        20 * np.log10(np.abs(s11_pred) + 1e-15) + 3 * s11_sigma,
-        alpha=0.15, color="C0",
-    )
-    ax1.plot(f_ghz, 20 * np.log10(np.abs(s11_pred) + 1e-15),
-             "-", color="C0", linewidth=1.5, label=r"S$_{11}$ pred")
-    ax1.plot(f_ghz, 20 * np.log10(np.abs(s11_true) + 1e-15),
-             "o", color="C0", markersize=2.5, alpha=0.5,
-             label=r"S$_{11}$ FEM")
+    # ── S11 on left axis ──
+    ax1.fill_between(f_ghz, s11_dB - 3 * s11_sig, s11_dB + 3 * s11_sig,
+                     alpha=0.3, color="C0", label=r"S$_{11}$ $\pm 3\sigma$")
+    ax1.plot(f_ghz, s11_dB - 3 * s11_sig, ":", color="C0", lw=0.6, alpha=0.5)
+    ax1.plot(f_ghz, s11_dB + 3 * s11_sig, ":", color="C0", lw=0.6, alpha=0.5)
+    ax1.plot(f_ghz, s11_dB, "-", color="C0", lw=1.8, label=r"S$_{11}$ pred")
+    ax1.plot(f_ghz, s11_true_dB, "o", color="C0", ms=3, alpha=0.5, label=r"S$_{11}$ FEM")
     ax1.set_ylabel(r"|S$_{11}$| (dB)", fontsize=11, color="C0")
     ax1.set_ylim(-60, 10)
     ax1.tick_params(axis="y", labelcolor="C0", labelsize=9)
 
-    # S21 on right axis (ax2)
-    ax2.fill_between(
-        f_ghz,
-        20 * np.log10(np.abs(s21_pred) + 1e-15) - 3 * s21_sigma,
-        20 * np.log10(np.abs(s21_pred) + 1e-15) + 3 * s21_sigma,
-        alpha=0.15, color="C3",
-    )
-    ax2.plot(f_ghz, 20 * np.log10(np.abs(s21_pred) + 1e-15),
-             "-", color="C3", linewidth=1.5, label=r"S$_{21}$ pred")
-    ax2.plot(f_ghz, 20 * np.log10(np.abs(s21_true) + 1e-15),
-             "s", color="C3", markersize=2.5, alpha=0.5,
-             label=r"S$_{21}$ FEM")
+    # ── S21 on right axis ──
+    ax2.fill_between(f_ghz, s21_dB - 3 * s21_sig, s21_dB + 3 * s21_sig,
+                     alpha=0.3, color="C3", label=r"S$_{21}$ $\pm 3\sigma$")
+    ax2.plot(f_ghz, s21_dB - 3 * s21_sig, ":", color="C3", lw=0.6, alpha=0.5)
+    ax2.plot(f_ghz, s21_dB + 3 * s21_sig, ":", color="C3", lw=0.6, alpha=0.5)
+    ax2.plot(f_ghz, s21_dB, "-", color="C3", lw=1.8, label=r"S$_{21}$ pred")
+    ax2.plot(f_ghz, s21_true_dB, "s", color="C3", ms=3, alpha=0.5, label=r"S$_{21}$ FEM")
     ax2.set_ylabel(r"|S$_{21}$| (dB)", fontsize=11, color="C3")
-    ax2.set_ylim(-75, 10)
+    ax2.set_ylim(-75, 5)
     ax2.tick_params(axis="y", labelcolor="C3", labelsize=9)
 
     ax1.set_xlabel("Frequency (GHz)", fontsize=11)
     ax1.set_title(rf"Predictive uncertainty, $\varepsilon_r = {ev:.3f}$", fontsize=11)
 
-    # Combined legend
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labels1 + labels2,
-               fontsize=8, loc="lower left", ncol=2)
+               fontsize=7.5, loc="lower left", ncol=2)
 
-    ax1.grid(True, alpha=0.3)
+    ax1.grid(True, alpha=0.25)
 
     fig.tight_layout()
     path = f"paper/fig_uncertainty_{ax_idx + 1}.png"
