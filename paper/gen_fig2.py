@@ -43,8 +43,8 @@ for ax_idx, ev in enumerate(pick):
     s21_true_dB = 20 * np.log10(np.abs(s21[m][idx]) + 1e-15)
 
     # RMSE in dB
-    s11_err = 20 * np.log10(1 + np.abs(s11p[idx] - s11[m][idx]) / np.maximum(np.abs(s11[m][idx]), 1e-15))
-    s21_err = 20 * np.log10(1 + np.abs(s21p[idx] - s21[m][idx]) / np.maximum(np.abs(s21[m][idx]), 1e-15))
+    s11_err = 20 * np.log10(np.maximum(np.abs(s11p[idx] - s11[m][idx]), 1e-15))
+    s21_err = 20 * np.log10(np.maximum(np.abs(s21p[idx] - s21[m][idx]), 1e-15))
 
     fig, ax1 = plt.subplots(1, 1, figsize=figsize)
     ax2 = ax1.twinx()
