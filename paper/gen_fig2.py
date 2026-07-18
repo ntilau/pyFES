@@ -1,4 +1,4 @@
-"""Generate figures: S11 + S21 pred/truth curves + RMSE, twin axes."""
+"""Generate figures: Sxx on left axis, RMSE on right axis."""
 import os
 os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
 
@@ -29,7 +29,7 @@ pick = [val_epsr[0], val_epsr[-1]]
 figsize = (5.2, 3.4)
 
 for ax_idx, ev in enumerate(pick):
-    print(f"Plotting S11 + S21 pred/truth + RMSE for epsr = {ev:.4f}")
+    print(f"Plotting Sxx + RMSE for epsr = {ev:.4f}")
     m = np.isin(epsr_vals, [ev])
     s11p, s21p = model.predict(X[m])
 
@@ -39,15 +39,15 @@ for ax_idx, ev in enumerate(pick):
 
     s11_dB = 20 * np.log10(np.abs(s11p[idx]) + 1e-15)
     s21_dB = 20 * np.log10(np.abs(s21p[idx]) + 1e-15)
-    s11_true_dB = 20 * np.log10(np.abs(s11[m][idx]) + 1e-15)
-    s21_true_dB = 20 * np.log10(np.abs(s21[m][idx]) + 1e-15)
+    s11_t_dB = 20 * np.log10(np.abs(s11[m][idx]) + 1e-15)
+    s21_t_dB = 20 * np.log10(np.abs(s21[m][idx]) + 1e-15)
 
-    # Relative RMSE in dB: 20·log10(|ΔS| / |S_true|)
-    s11_err = 20 * np.log10(
+    # Relative RMSE in dB
+    s11_re = 20 * np.log10(
         np.maximum(np.abs(s11p[idx] - s11[m][idx]), 1e-15)
         / np.maximum(np.abs(s11[m][idx]), 1e-15)
     )
-    s21_err = 20 * np.log10(
+    s21_re = 20 * np.log10(
         np.maximum(np.abs(s21p[idx] - s21[m][idx]), 1e-15)
         / np.maximum(np.abs(s21[m][idx]), 1e-15)
     )
@@ -55,24 +55,25 @@ for ax_idx, ev in enumerate(pick):
     fig, ax1 = plt.subplots(1, 1, figsize=figsize)
     ax2 = ax1.twinx()
 
-    # ── S11 on left axis ──
-    l1 = ax1.plot(f_ghz, s11_dB, "-", color="C0", lw=1.8, label=r"S$_{11}$ pred")
-    l2 = ax1.plot(f_ghz, s11_true_dB, "o", color="C0", ms=3, alpha=0.5, label=r"S$_{11}$ FEM")
-    l3 = ax1.plot(f_ghz, s11_err, ":", color="C0", lw=1.0, label=r"S$_{11}$ RMSE")
-    ax1.set_ylabel(r"|S$_{11}$| (dB)", fontsize=11, color="C0")
-    ax1.set_ylim(-60, 10)
-    ax1.tick_params(axis="y", labelcolor="C0", labelsize=9)
+    # ── Left axis: S-parameters ──
+    ax1.plot(f_ghz, s11_dB, "-", color="C0", lw=1.5, label=r"S$_{11}$ pred")
+    ax1.plot(f_ghz, s11_t_dB, "o", color="C0", ms=3, alpha=0.5, label=r"S$_{11}$ FEM")
+    ax1.plot(f_ghz, s21_dB, "-", color="C3", lw=1.5, label=r"S$_{21}$ pred")
+    ax1.plot(f_ghz, s21_t_dB, "s", color="C3", ms=3, alpha=0.5, label=r"S$_{21}$ FEM")
+    ax1.set_ylabel(r"|S$_{11}$|, |S$_{21}$| (dB)", fontsize=11)
+    ax1.set_ylim(-75, 10)
+    ax1.tick_params(labelsize=9)
 
-    # ── S21 on right axis ──
-    l4 = ax2.plot(f_ghz, s21_dB, "-", color="C3", lw=1.8, label=r"S$_{21}$ pred")
-    l5 = ax2.plot(f_ghz, s21_true_dB, "s", color="C3", ms=3, alpha=0.5, label=r"S$_{21}$ FEM")
-    l6 = ax2.plot(f_ghz, s21_err, ":", color="C3", lw=1.0, label=r"S$_{21}$ RMSE")
-    ax2.set_ylabel(r"|S$_{21}$| (dB)", fontsize=11, color="C3")
-    ax2.set_ylim(-75, 5)
-    ax2.tick_params(axis="y", labelcolor="C3", labelsize=9)
+    # ── Right axis: RMSE ──
+    ax2.plot(f_ghz, s11_re, ":", color="C0", lw=1.2, label=r"S$_{11}$ rel. error")
+    ax2.plot(f_ghz, s21_re, ":", color="C3", lw=1.2, label=r"S$_{21}$ rel. error")
+    ax2.set_ylabel(r"Relative error (dB)", fontsize=11)
+    ax2.set_ylim(-60, 5)
+    ax2.tick_params(labelsize=9)
 
     ax1.set_xlabel("Frequency (GHz)", fontsize=11)
-    ax1.set_title(rf"S-parameter predictions and RMSE, $\varepsilon_r = {ev:.3f}$", fontsize=11)
+    ax1.set_title(rf"S-parameter predictions and relative error, $\varepsilon_r = {ev:.3f}$",
+                  fontsize=11)
 
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
