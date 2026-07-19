@@ -109,7 +109,7 @@ for st, sp, sfx, prefix in [
                r"|" + sfx + r"| (dB)", (-80, 5), sfx, is_mag=True)
     ax.set_title(sfx + r" magnitude", fontsize=11)
     fig.tight_layout()
-    path = f"paper/fig_{prefix}_mag.pdf"
+    path = f"paper/figs/fig_{prefix}_mag.pdf"
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {path}")
@@ -120,7 +120,7 @@ for st, sp, sfx, prefix in [
                r"$\angle$" + sfx + r" (deg)", None, sfx, is_mag=False)
     ax.set_title(sfx + r" phase", fontsize=11)
     fig.tight_layout()
-    path = f"paper/fig_{prefix}_phase.pdf"
+    path = f"paper/figs/fig_{prefix}_phase.pdf"
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {path}")
@@ -131,7 +131,7 @@ for st, sp, sfx, prefix in [
                        sfx + r" relative error")
     ax.set_title(sfx + r" relative error", fontsize=11)
     fig.tight_layout()
-    path = f"paper/fig_{prefix}_error.pdf"
+    path = f"paper/figs/fig_{prefix}_error.pdf"
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {path}")
