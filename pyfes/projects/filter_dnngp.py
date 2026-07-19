@@ -26,33 +26,50 @@ from ..projects._utils import scattering_parameters
 # ──────────────────────────────────────────────
 
 
-class FeatureExtractor(torch.nn.Module):
-    """Deep kernel feature extractor (Wilson et al. 2016).
+class MoEFeatureExtractor(torch.nn.Module):
+    """Mixture-of-Experts feature extractor.
 
-    Architecture per DKL paper: wide hidden layers learn a low-dimensional
-    representation for the GP base kernel.
+    Shared backbone + two expert heads blended by an εᵣ-gated network.
+    Expert A (reflection) and Expert B (transmission) learn distinct
+    64-dim feature representations. The gate takes εᵣ → softmax(2)
+    and blends the expert outputs, letting the model adapt its feature
+    representation to the local device physics.
     """
 
-    def __init__(self, in_dim=8, out_dim=64):
+    def __init__(self, in_dim=8, hidden_dim=500, out_dim=64):
         super().__init__()
-        self.net = torch.nn.Sequential(
+        self.out_dim = out_dim
+        self.shared = torch.nn.Sequential(
             torch.nn.Linear(in_dim, 1000), torch.nn.ReLU(),
             torch.nn.Linear(1000, 1000), torch.nn.ReLU(),
-            torch.nn.Linear(1000, 500), torch.nn.ReLU(),
-            torch.nn.Linear(500, out_dim),
+            torch.nn.Linear(1000, hidden_dim), torch.nn.ReLU(),
+        )
+        # Two expert heads
+        self.expert_a = torch.nn.Linear(hidden_dim, out_dim)  # reflection
+        self.expert_b = torch.nn.Linear(hidden_dim, out_dim)  # transmission
+        # Gate: εᵣ → 2 mixing weights
+        self.gate = torch.nn.Sequential(
+            torch.nn.Linear(1, 16), torch.nn.ReLU(),
+            torch.nn.Linear(16, 2),
         )
 
     def forward(self, x):
-        return self.net(x)
+        h = self.shared(x)
+        f_a = self.expert_a(h)  # (n, 64) — reflection features
+        f_b = self.expert_b(h)  # (n, 64) — transmission features
+        # Gate weight from εᵣ (first input feature)
+        g = torch.softmax(self.gate(x[:, [0]]), dim=-1)  # (n, 2)
+        # Blend
+        return g[:, [0]] * f_a + g[:, [1]] * f_b
 
 
-# Single-output DNN-GP (ExactGP per S-param channel)
+# Single-output MoE-DNN-GP (ExactGP per S-param channel)
 class DNN_GP(gpytorch.models.ExactGP):
-    """Single-output Deep Kernel Learning — RBF × RBF product kernel."""
+    """Mixture-of-Experts Deep Kernel Learning — RBF × RBF product kernel."""
 
     def __init__(self, train_x, train_y, likelihood, in_dim=8, feat_dim=64):
         super().__init__(train_x, train_y, likelihood)
-        self.feature_extractor = FeatureExtractor(in_dim=in_dim, out_dim=feat_dim)
+        self.feature_extractor = MoEFeatureExtractor(in_dim=in_dim, out_dim=feat_dim)
         self.mean_module = gpytorch.means.ConstantMean()
         self.covar_module = gpytorch.kernels.ScaleKernel(
             gpytorch.kernels.RBFKernel(ard_num_dims=feat_dim)
