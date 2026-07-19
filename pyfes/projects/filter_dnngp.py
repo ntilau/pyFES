@@ -27,13 +27,11 @@ from ..projects._utils import scattering_parameters
 
 
 class MoEFeatureExtractor(torch.nn.Module):
-    """Mixture-of-Experts feature extractor.
+    """Mixture-of-Experts feature extractor with temperature-gated blending.
 
-    Shared backbone + two expert heads blended by an εᵣ-gated network.
-    Expert A (reflection) and Expert B (transmission) learn distinct
-    64-dim feature representations. The gate takes εᵣ → softmax(2)
-    and blends the expert outputs, letting the model adapt its feature
-    representation to the local device physics.
+    Shared backbone + two expert heads blended by a deep gate that operates
+    on full shared features (not just εᵣ). A learnable temperature sharpens
+    the softmax for more decisive expert selection.
     """
 
     def __init__(self, in_dim=8, hidden_dim=500, out_dim=64):
@@ -47,18 +45,24 @@ class MoEFeatureExtractor(torch.nn.Module):
         # Two expert heads
         self.expert_a = torch.nn.Linear(hidden_dim, out_dim)  # reflection
         self.expert_b = torch.nn.Linear(hidden_dim, out_dim)  # transmission
-        # Gate: εᵣ → 2 mixing weights
+        # Gate: shared features → 2 mixing weights (deep, decisive)
         self.gate = torch.nn.Sequential(
-            torch.nn.Linear(1, 16), torch.nn.ReLU(),
-            torch.nn.Linear(16, 2),
+            torch.nn.Linear(hidden_dim, 128), torch.nn.ReLU(),
+            torch.nn.Linear(128, 64), torch.nn.ReLU(),
+            torch.nn.Linear(64, 2),
         )
+        # Learnable temperature — lower = sharper softmax
+        self.log_temperature = torch.nn.Parameter(torch.tensor(-2.3))  # init T≈0.1
 
     def forward(self, x):
         h = self.shared(x)
         f_a = self.expert_a(h)  # (n, 64) — reflection features
         f_b = self.expert_b(h)  # (n, 64) — transmission features
-        # Gate weight from εᵣ (first input feature)
-        g = torch.softmax(self.gate(x[:, [0]]), dim=-1)  # (n, 2)
+        # Gate from full shared features (not just εᵣ)
+        logits = self.gate(h)  # (n, 2)
+        # Sharpened softmax with learnable temperature
+        temp = torch.exp(self.log_temperature).clamp(min=0.01, max=10.0)
+        g = torch.softmax(logits / temp, dim=-1)  # (n, 2)
         # Blend
         return g[:, [0]] * f_a + g[:, [1]] * f_b
 
