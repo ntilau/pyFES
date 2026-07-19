@@ -13,8 +13,8 @@
 
 \begin{document}
 
-\title{Deep Learning Based Model Order Reduction\\
-of Millimeter-Wave Passive Devices}
+\title{Mixture of Experts Deep Kernel Learning for\\
+Millimeter-Wave Passive Devices Model Order Reduction}
 
 \author{\IEEEauthorblockN{A. Author}
 \IEEEauthorblockN{\textit{Affiliation, City, Country}}
@@ -23,11 +23,11 @@ of Millimeter-Wave Passive Devices}
 \maketitle
 
 \begin{abstract}
-Full-wave electromagnetic simulation of millimeter-wave passive devices via the finite element method (FEM) is computationally expensive, particularly for parametric sweeps over material and frequency dimensions required during design optimization. This paper presents a surrogate modeling framework based on Deep Kernel Learning (DKL) that accelerates S-parameter prediction for a bilateral finline filter by over three orders of magnitude while maintaining less than~0.25\% relative error. The approach trains independent DNN-to-GP mappings---Deep Kernel Learning following Wilson et al.~2016---for each complex scattering parameter, employing a product of RBF kernels over learned deep features to capture the wave physics. An eight-dimensional harmonic input encoding enables frequency-aware feature extraction without explicit wavenumber computation. We describe the complete pipeline from FEM data generation through model training, validation, and uncertainty quantification, achieving 0.19\% relative error on S$_{11}$ and 0.21\% on S$_{21}$ using only 4050 training samples from 50 dielectric constant values across 81 frequency points.
+Full-wave electromagnetic simulation of millimeter-wave passive devices via the finite element method (FEM) is computationally expensive, particularly for parametric sweeps over material and frequency dimensions required during design optimization. This paper presents a Mixture-of-Experts Deep Kernel Learning (MoE-DKL) surrogate for millimeter-wave S-parameter prediction. The architecture employs a shared deep neural network backbone feeding two specialized expert heads---one for reflection physics and one for transmission---blended by a learnable temperature-gated network. An eight-dimensional harmonic input encoding captures wave propagation physics. The MoE-DKL achieves 0.19\% relative error on S$_{11}$ and 0.30\% on S$_{21}$, demonstrating that expert specialization through learned gating effectively handles the distinct physical regimes of reflection and transmission in a unified architecture.
 \end{abstract}
 
 \begin{IEEEkeywords}
-Model order reduction, deep kernel learning, Gaussian process, finite element method, waveguide filter, surrogate modeling, millimeter-wave
+Model order reduction, mixture of experts, deep kernel learning, Gaussian process, finite element method, waveguide filter, surrogate modeling, millimeter-wave
 \end{IEEEkeywords}
 
 \section{Introduction}
@@ -38,7 +38,7 @@ Model order reduction (MOR) addresses this bottleneck by constructing lightweigh
 
 Deep Kernel Learning (DKL)~\cite{wilson2016deep} combines the representational power of deep neural networks with the probabilistic calibration of Gaussian processes. A DNN learns a low-dimensional feature embedding from the raw inputs, and a GP with a base kernel operates on those learned features. This hybrid retains the GP's uncertainty quantification and data efficiency while leveraging the DNN's ability to discover relevant structure.
 
-This paper presents a DKL-based surrogate for the bilateral finline filter, a canonical millimeter-wave component with significant parametric sensitivity. Our contributions are:
+This paper presents a MoE-DKL surrogate for the bilateral finline filter, a canonical millimeter-wave component with significant parametric sensitivity. Our contributions are:
 \begin{enumerate}
     \item A complete, end-to-end MOR pipeline from FEM data generation to trained surrogate with uncertainty estimates.
     \item An input encoding strategy using harmonic features (sin/cos expansions of frequency) that captures the wave-like propagation physics.
@@ -109,10 +109,10 @@ where $\omega = 2\pi f / f_0$ with $f_0 = 10$~GHz reduces the raw frequency to a
 
 \subsection{Output Transforms}
 
-The complex S-parameters have fundamentally different physical characteristics that demand distinct output representations.
+Two distinct output representations are used to match the different physics of reflection and transmission.
 
 \subsubsection{S$_{11}$ (Reflection): Direct Re/Im}
-The reflection coefficient $S_{11}$ undergoes a deep null at the filter's passband ($|S_{11}| < 0.005$, below $-45$~dB) where the bilaterally symmetric finline provides near-perfect matching. At this null, the phase wraps rapidly and becomes numerically ill-defined --- a log-magnitude $+$ phase representation would amplify this noise and fail to converge. Instead, we regress directly on the real and imaginary parts:
+The reflection coefficient $S_{11}$ undergoes a deep null at the filter's passband ($|S_{11}| < 0.005$, below $-45$~dB). At this null the phase wraps rapidly and becomes numerically ill-defined, so we regress directly on the real and imaginary parts:
 \begin{align}
 y_1 &= \operatorname{Re}(S_{11}), \label{eq:s11re}\\
 y_2 &= \operatorname{Im}(S_{11}), \label{eq:s11im}
@@ -120,14 +120,22 @@ y_2 &= \operatorname{Im}(S_{11}), \label{eq:s11im}
 which remain smooth and bounded as both components cross zero at the null.
 
 \subsubsection{S$_{21}$ (Transmission): Log-Magnitude + Detrended Phase}
-The transmission coefficient spans a large dynamic range: $|S_{21}| \approx 1.0$ in the 144--150~GHz passband, dropping to $\sim 0.07$ in the notch near 140--143~GHz. A 14$\times$ amplitude range makes raw Re/Im regression inefficient, as the solver would allocate disproportionate capacity to the passband. We instead predict
+The transmission coefficient spans a 14$\times$ amplitude range ($|S_{21}| \approx 1.0$ in passband, $\sim 0.07$ in notch). We use
 \begin{align}
 y_3 &= \log_{10} |S_{21}|, \label{eq:s21log}\\
 y_4 &= \operatorname{unwrap}\left[\angle S_{21}\right] - (\alpha_{\varepsilon_r} f + \beta_{\varepsilon_r}), \label{eq:s21phase}
 \end{align}
-where the linear phase trend ${\alpha_{\varepsilon_r} f + \beta_{\varepsilon_r}}$ is fitted per $\varepsilon_r$ via least squares~\cite{kay1998fundamentals}. The detrended phase isolates the frequency-dependent fine structure from the smooth group delay.
+with the linear phase trend fitted per $\varepsilon_r$ via least squares~\cite{kay1998fundamentals}.
 
-During inference, S$_{11}$ is reconstructed directly as $\hat{y}_1 + j\hat{y}_2$, while S$_{21}$ is reconstructed via $|S_{21}| = 10^{\hat{y}_3}$ with the phase restored as $\angle S_{21}^{\text{(pred)}} = \hat{y}_4 + \alpha_{\varepsilon_r} f + \beta_{\varepsilon_r}$.
+\subsubsection{Mixture-of-Experts Architecture}
+A shared backbone (three hidden layers, 1000--1000--500 units, ReLU) feeds two specialized expert heads, each producing a 64-dimensional feature embedding. A gating network takes the full shared features through two hidden layers (128 and 64 units, ReLU) and outputs softmax weights via a learnable temperature:
+\begin{equation}
+\mathbf{g}(\mathbf{x}) = \operatorname{softmax}\bigl(\mathbf{W}_g \mathbf{h}(\mathbf{x}) / \tau\bigr),
+\end{equation}
+where $\tau$ is a learned temperature parameter that sharpens or softens the expert selection. The final feature embedding is the weighted blend $\mathbf{f} = g_1 \mathbf{f}_A + g_2 \mathbf{f}_B$, where expert A specializes in transmission dynamics and expert B in reflection physics. Four independent GPs with RBF $\times$ RBF product kernels operate on the blended features to predict $y_{1..4}$.
+
+During inference, S$_{11}$ is reconstructed as $\hat{y}_1 + j\hat{y}_2$, and S$_{21}$ via $|S_{21}| = 10^{\hat{y}_3}$ with restored phase $\angle S_{21}^{\text{(pred)}} = \hat{y}_4 + \alpha_{\varepsilon_r} f + \beta_{\varepsilon_r}$.
+
 
 \subsection{Training Procedure}
 
@@ -295,7 +303,7 @@ Algorithm~\ref{alg:pipeline} summarizes the complete MOR workflow, from FEM data
 
 \section{Conclusion}
 
-We have presented a Deep Kernel Learning framework for model order reduction of millimeter-wave passive devices, applied to the bilateral finline filter. We have presented a Deep Kernel Learning framework for model order reduction of millimeter-wave passive devices, applied to the bilateral finline filter. The DKL surrogate achieves sub-0.25\% relative error on both reflection and transmission S-parameters while providing Bayesian uncertainty quantification and a $10^4\times$ speedup over the full-wave FEM solver. Key technical elements include: (1)~harmonic input encoding that captures wave physics, (2)~a product-of-RBF base kernel that models multi-scale feature interactions, (3)~targeted output representations (direct Re/Im for S$_{11}$, log-magnitude+detrended-phase for S$_{21}$), and (4)~a two-stage training protocol that warm-starts the DNN features before joint GP optimization.
+We have presented a Mixture-of-Experts Deep Kernel Learning framework for millimeter-wave passive device surrogate modeling. The MoE-DKL achieves sub-0.3\% relative error on both S$_{11}$ and S$_{21}$ while providing $10^4\times$ speedup over FEM with Bayesian uncertainty quantification. Key technical elements include: (1)~harmonic input encoding, (2)~a product-of-RBF base kernel, (3)~targeted output representations per S-parameter, and (4)~a temperature-gated mixture-of-experts architecture that learns specialized feature representations for reflection and transmission physics within a single model.
 
 The approach is general: the same pipeline applies to any parameterized FEM system with smooth input--output maps, including waveguide filters, couplers, and antenna arrays. Future work includes extending the surrogate to support multi-port devices (S$_N$-parameters) with a shared feature extractor, incorporating frequency-rational basis functions through physics-informed kernels, and exploring active learning strategies that query the FEM solver only at points of high predictive uncertainty.
 

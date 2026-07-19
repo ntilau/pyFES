@@ -75,7 +75,7 @@ pyFES — Python Finite Element Software for electromagnetics.
 | `iormesh/` | C mesher (Triangle wrapper, MAT .mat exporter) |
 
 ### Paper
-- `paper/paper.pdf` — IEEE paper: *Deep Learning Based Model Order Reduction of Millimeter-Wave Passive Devices*
+- `paper/paper.pdf` — IEEE paper: *Mixture of Experts Deep Kernel Learning for Millimeter-Wave Passive Devices Model Order Reduction*
 - `paper/paper.tex` — LaTeX source (IEEEtran, two-column)
 - 8 vector figures from trained surrogate, 11 references, 5 pages
 
