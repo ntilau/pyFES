@@ -552,11 +552,18 @@ class BilateralFilterDNNGP:
         return self
 
     def predict_with_uncertainty(self, X):
-        """Predict with 2σ confidence intervals.
+        """Predict with confidence intervals (std in dB).
 
         Returns
         -------
-        s11_pred, s11_std, s21_pred, s21_std : ndarray
+        s11_pred : ndarray
+            Predicted complex S11.
+        s11_std_db : ndarray
+            S11 standard deviation in dB.
+        s21_pred : ndarray
+            Predicted complex S21.
+        s21_std_db : ndarray
+            S21 standard deviation in dB.
         """
         if not self.is_trained:
             raise RuntimeError("Model not trained yet.")

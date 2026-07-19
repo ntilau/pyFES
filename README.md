@@ -48,7 +48,7 @@ model, metrics = bilateral_filter_dnngp(
     mat_file="bilat_all_sparams_50epsr.mat", n_epochs=500,
 )
 print(f"S11: {metrics['s11_rel_pct']:.2f}%  S21: {metrics['s21_rel_pct']:.2f}%")
-# → S11: 0.25%  S21: 0.45%  (both < 1% relative error)
+# → S11: 0.19%  S21: 0.21%  (both < 1% relative error)
 
 # Predict S-parameters at new (epsr, freq) points
 import numpy as np
@@ -83,7 +83,22 @@ model = BilateralFilterDNNGP().load("bilat_dnngp.pt")
 | `thermal_distribution_dg` | Discontinuous Galerkin heat |
 | `coaxial_capacitance` | Coax cable capacitance |
 | `capacitive_clearance` | Capacitive sensor |
-| `bilateral_filter_dnngp` | Deep Kernel Learning surrogate — S₁₁ 0.19%, S₂₁ 0.23% error |
+| `bilateral_filter_dnngp` | Deep Kernel Learning surrogate — S₁₁ 0.19%, S₂₁ 0.21% error — see paper/ |
+
+
+## Paper
+
+An IEEE-conference formatted paper describing the DKL surrogate model is available:
+
+```bash
+open paper/paper.pdf
+```
+
+| File | Description |
+|---|---|
+| `paper/paper.pdf` | Compiled PDF (6 pages, IEEE format) |
+| `paper/paper.tex` | LaTeX source |
+| `paper/fig_*.pdf` | Vector figure panels from trained model |
 
 ## Mesh generation (`.poly` → `.h1.mat`)
 
@@ -136,6 +151,7 @@ Default Triangle arguments: `q34A` (quality mesh, 34° min angle, region attribu
 | `iormesh/` | C mesher (Triangle wrapper, MATLAB .mat exporter) |
 | `data/` | `.poly` geometry files and `.h1.mat` mesh files |
 | `tests/` | pytest suite |
+| `paper/` | IEEE paper and vector figures |
 
 ## Tests
 

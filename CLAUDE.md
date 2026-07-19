@@ -58,7 +58,7 @@ pyFES — Python Finite Element Software for electromagnetics.
 | Module | Description |
 |---|---|
 | `filter_design.py` | Waveguide filter scattering (bilateral, two-post, HB) |
-| `filter_dnngp.py` | **Deep Kernel Learning surrogate** (Wilson et al. 2016) — trains 4 DNN→GP models: S11 Re/Im (0.19%), S21 log|S|+phase (0.23%). |
+| `filter_dnngp.py` | **Deep Kernel Learning surrogate** (Wilson et al. 2016) — trains 4 DNN→GP models: S11 Re/Im (0.19%), S21 log|S|+phase (0.21%). |
 | `waveguide.py` | Rectangular waveguide S-parameters |
 | `modal_analysis.py` | TE mode cutoff frequencies, open microstrip |
 | `electrostatics.py` | Electrostatic potential |
@@ -73,6 +73,11 @@ pyFES — Python Finite Element Software for electromagnetics.
 | `pyfes/constants.py` | Physical constants (c0, z0, eps0, mu0), dB/phase utilities |
 | `data/` | .poly geometry files and .h1.mat mesh files |
 | `iormesh/` | C mesher (Triangle wrapper, MAT .mat exporter) |
+
+### Paper
+- `paper/paper.pdf` — IEEE paper: *Deep Learning Based Model Order Reduction of Millimeter-Wave Passive Devices*
+- `paper/paper.tex` — LaTeX source (IEEEtran, two-column)
+- 8 vector figures from trained surrogate, 11 references, 5 pages
 
 ### Pre-generated data files
 Files in project root (not tracked in git):
@@ -100,7 +105,7 @@ Files in project root (not tracked in git):
 
 **Output transforms:**
 - **S11 — 0.19%**: Re/Im directly (raw complex works well for reflection)
-- **S21 — 0.23%**: log10|S| + detrended unwrapped phase (handles 14x amplitude range). Linear phase trend (slope+intercept) fitted per epsr, stored, and restored during reconstruction.
+- **S21 — 0.21%**: log10|S| + detrended unwrapped phase (handles 14x amplitude range). Linear phase trend (slope+intercept) fitted per epsr, stored, and restored during reconstruction.
 
 **Data I/O:**
 - .mat files: epsr, freq, s11/s12/s21/s22 (complex), s*_re/s*_im (float)
