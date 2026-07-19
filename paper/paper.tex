@@ -225,9 +225,8 @@ Single point & 56.4~ms & 12.8~ms$^\dagger$ & $4\times$ \\
 4050-point sweep & 228~s & 338.6~ms & $674\times$ \\
 Per point (batch) & 56.4~ms & 83.6~$\mu$s & --- \\
 \bottomrule
+\multicolumn{4}{l}{\footnotesize $^\dagger$With cached Cholesky decomposition.}\\
 \end{tabular}
-\vspace{2pt}
-\raggedright\footnotesize $^\dagger$With cached Cholesky decomposition.
 \end{table}
 
 The FEM solver requires 56.4~ms per frequency solve (waveguide port assembly + sparse linear solve) on an Apple M3 MacBook Air, totaling 228~s (3.8~min) for the 4050-sample dataset. After training, the MoE-DKL surrogate evaluates 4050 points in 338.6~ms---a batch speedup factor of $674\times$ over the FEM solver. Single-point inference with a cached Cholesky decomposition takes 12.8~ms ($4\times$ speedup), and the per-point amortized cost in batch mode is 83.6~$\mu$s. Training all four MoE-DKL models completes in approximately 30~minutes on the same hardware using Apple MPS acceleration, for a total workflow of under 35~minutes. After this one-time training cost, the surrogate provides near-instantaneous S-parameter predictions across the full design space with Bayesian uncertainty quantification.
