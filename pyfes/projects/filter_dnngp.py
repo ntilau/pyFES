@@ -201,6 +201,8 @@ class BilateralFilterDNNGP:
 
         self._target_names = ["Re(S₁₁)", "Im(S₁₁)",
                               "log₁₀|S₂₁|", "∠S₂₁ (detrended)"]
+        # Validation RMSE targets for early stopping (in model's transformed space)
+        self._target_rmse = {0: 0.001, 1: 0.001, 2: 0.002, 3: 0.003}
         self.phase_slopes = {}
         self.phase_intercepts = {}
 
@@ -399,6 +401,13 @@ class BilateralFilterDNNGP:
             sched = torch.optim.lr_scheduler.CosineAnnealingLR(
                 opt, T_max=self.n_epochs
             )
+
+            # Early stopping: check val RMSE every 50 epochs
+            best_val_rmse = float("inf")
+            stop_patience = 100  # epochs without improvement
+            stop_counter = 0
+            target_rmse = float(self._target_rmse.get(i, 0.01))
+
             for epoch in range(self.n_epochs):
                 opt.zero_grad()
                 out = model(X_train)
@@ -406,8 +415,36 @@ class BilateralFilterDNNGP:
                 loss.backward()
                 opt.step()
                 sched.step()
-                if self.verbose and (epoch + 1) % 250 == 0:
-                    print(f"  Epoch {epoch + 1:4d}  loss={loss.item():.2f}")
+
+                if (epoch + 1) % 50 == 0:
+                    model.eval()
+                    lik.eval()
+                    with (torch.no_grad(),
+                          gpytorch.settings.fast_pred_var()):
+                        p = lik(model(X_val))
+                    pred_n = p.mean.numpy()
+                    pred = ys.inverse_transform(pred_n.reshape(-1, 1))[:, 0]
+                    vr = np.sqrt(np.mean((pred - y_val_true)**2))
+
+                    # Stop if target reached
+                    if vr < target_rmse:
+                        if self.verbose:
+                            print(f"  Epoch {epoch + 1:4d}  val RMSE={vr:.4f} (target={target_rmse}) ✓")
+                        break
+
+                    # Stop on plateau
+                    if vr < best_val_rmse:
+                        best_val_rmse = vr
+                        stop_counter = 0
+                    else:
+                        stop_counter += 50
+                        if stop_counter >= stop_patience:
+                            if self.verbose:
+                                print(f"  Epoch {epoch + 1:4d}  val RMSE={vr:.4f} (plateau) ✓")
+                            break
+
+                    model.train()
+                    lik.train()
 
             # Evaluate
             model.eval()
@@ -419,7 +456,7 @@ class BilateralFilterDNNGP:
             pred = ys.inverse_transform(pred_n.reshape(-1, 1))[:, 0]
             rmse = np.sqrt(np.mean((pred - y_val_true)**2))
             if self.verbose:
-                print(f"  Val RMSE = {rmse:.4f}")
+                print(f"  Final val RMSE = {rmse:.4f}")
 
             self.models[i] = model
             self.likelihoods[i] = lik
