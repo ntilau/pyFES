@@ -210,7 +210,7 @@ S$_{21}$ & $2.5\times10^{-3}$ & 0.30 & 0.04 \\
 
 Both S-parameters achieve relative errors well below 1\%. The reflection coefficient S$_{11}$ benefits from the direct Re/Im representation, which avoids the nonlinearities inherent in magnitude-phase conversion. The transmission S$_{21}$ error remains low despite the 14$\times$ amplitude range, validating the log-magnitude + detrended-phase strategy.
 
-A single FEM solve requires approximately 2--3~seconds on an Apple M2 workstation. Generating the full 4050-sample training set takes approximately 2.5~hours. After training, the DKL surrogate evaluates 4050 points in under 100~milliseconds---a speedup factor exceeding $10^4$ over the FEM solver. Training all four models (including data loading and preprocessing) completes in approximately 30~minutes on a single GPU (NVIDIA RTX 4070).
+A single FEM solve (including waveguide port assembly) requires approximately 55~ms on an Apple M3 MacBook Air. Generating the full 4050-sample training set takes approximately 3.7~minutes. After training, the MoE-DKL surrogate evaluates 4050 points in 356~ms---a speedup factor of approximately $6\times 10^2$ over the FEM solver. Training all four models completes in approximately 30~minutes on the same hardware (MPS acceleration).
 
 \subsection{Effect of Input Encoding}
 
@@ -303,7 +303,7 @@ Algorithm~\ref{alg:pipeline} summarizes the complete MOR workflow, from FEM data
 
 \section{Conclusion}
 
-We have presented a Mixture-of-Experts Deep Kernel Learning framework for millimeter-wave passive device surrogate modeling. The MoE-DKL achieves sub-0.3\% relative error on both S$_{11}$ and S$_{21}$ while providing $10^4\times$ speedup over FEM with Bayesian uncertainty quantification. Key technical elements include: (1)~harmonic input encoding, (2)~a product-of-RBF base kernel, (3)~targeted output representations per S-parameter, and (4)~a temperature-gated mixture-of-experts architecture that learns specialized feature representations for reflection and transmission physics within a single model.
+We have presented a Mixture-of-Experts Deep Kernel Learning framework for millimeter-wave passive device surrogate modeling. The MoE-DKL achieves sub-0.3\% relative error on both S$_{11}$ and S$_{21}$ while providing $6\times 10^2\times$ speedup over FEM with Bayesian uncertainty quantification. Key technical elements include: (1)~harmonic input encoding, (2)~a product-of-RBF base kernel, (3)~targeted output representations per S-parameter, and (4)~a temperature-gated mixture-of-experts architecture that learns specialized feature representations for reflection and transmission physics within a single model.
 
 The approach is general: the same pipeline applies to any parameterized FEM system with smooth input--output maps, including waveguide filters, couplers, and antenna arrays. Future work includes extending the surrogate to support multi-port devices (S$_N$-parameters) with a shared feature extractor, incorporating frequency-rational basis functions through physics-informed kernels, and exploring active learning strategies that query the FEM solver only at points of high predictive uncertainty.
 
