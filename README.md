@@ -98,7 +98,7 @@ open paper/paper.pdf
 |---|---|
 | `paper/paper.pdf` | Compiled PDF (6 pages, IEEE format) |
 | `paper/paper.tex` | LaTeX source |
-| `paper/fig_*.pdf` | Vector figure panels from trained model |
+| `paper/figs/fig_*.pdf` | Vector figure panels in paper/figs/ |
 
 ## Mesh generation (`.poly` → `.h1.mat`)
 
