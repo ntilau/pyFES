@@ -42,14 +42,12 @@ for ax_idx, ev in enumerate(pick):
     s11_t_dB = 20 * np.log10(np.abs(s11[m][idx]) + 1e-15)
     s21_t_dB = 20 * np.log10(np.abs(s21[m][idx]) + 1e-15)
 
-    # Relative RMSE in dB
+    # Absolute error in dB: 20·log10(|ΔS|)
     s11_re = 20 * np.log10(
         np.maximum(np.abs(s11p[idx] - s11[m][idx]), 1e-15)
-        / np.maximum(np.abs(s11[m][idx]), 1e-15)
     )
     s21_re = 20 * np.log10(
         np.maximum(np.abs(s21p[idx] - s21[m][idx]), 1e-15)
-        / np.maximum(np.abs(s21[m][idx]), 1e-15)
     )
 
     fig, ax1 = plt.subplots(1, 1, figsize=figsize)
@@ -65,14 +63,14 @@ for ax_idx, ev in enumerate(pick):
     ax1.tick_params(labelsize=9)
 
     # ── Right axis: RMSE ──
-    ax2.plot(f_ghz, s11_re, ":", color="C0", lw=1.2, label=r"S$_{11}$ rel. error")
-    ax2.plot(f_ghz, s21_re, ":", color="C3", lw=1.2, label=r"S$_{21}$ rel. error")
-    ax2.set_ylabel(r"Relative error (dB)", fontsize=11)
+    ax2.plot(f_ghz, s11_re, ":", color="C0", lw=1.2, label=r"S$_{11}$ abs. error")
+    ax2.plot(f_ghz, s21_re, ":", color="C3", lw=1.2, label=r"S$_{21}$ abs. error")
+    ax2.set_ylabel(r"Absolute error (dB)", fontsize=11)
     ax2.set_ylim(-60, 5)
     ax2.tick_params(labelsize=9)
 
     ax1.set_xlabel("Frequency (GHz)", fontsize=11)
-    ax1.set_title(rf"S-parameter predictions and relative error, $\varepsilon_r = {ev:.3f}$",
+    ax1.set_title(rf"S-parameter predictions and absolute error, $\varepsilon_r = {ev:.3f}$",
                   fontsize=11)
 
     lines1, labels1 = ax1.get_legend_handles_labels()

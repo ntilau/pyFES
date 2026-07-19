@@ -211,7 +211,7 @@ To study the contribution of harmonic features, we trained an ablation variant u
 
 \subsection{Uncertainty Calibration}
 
-Figures~\ref{fig:uncert1} and~\ref{fig:uncert2} show the predicted and ground truth S-parameters alongside RMSE curves for two held-out $\varepsilon_r$ values.
+Figures~\ref{fig:uncert1} and~\ref{fig:uncert2} show S-parameter predictions (left axis) and absolute error in dB (right axis) for two held-out $\varepsilon_r$ values.
 
 \begin{figure}[t]
 \centering
@@ -229,13 +229,13 @@ Figures~\ref{fig:uncert1} and~\ref{fig:uncert2} show the predicted and ground tr
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{fig_uncertainty_1.pdf}
-\caption{Predicted and ground truth S$_{11}$ and S$_{21}$ with RMSE curves at $\varepsilon_r = 2.053$ (held-out). Solid: prediction; markers: FEM; dotted: RMSE.}\label{fig:uncert1}
+\caption{S$_{11}$ and S$_{21}$ predictions (left axis) and absolute error in dB (right axis) at $\varepsilon_r = 2.053$ (held-out). Solid: prediction; markers: FEM; dotted: error.}\label{fig:uncert1}
 \end{figure}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{fig_uncertainty_2.pdf}
-\caption{Predicted and ground truth S$_{11}$ and S$_{21}$ with RMSE curves at $\varepsilon_r = 2.196$ (held-out).}\label{fig:uncert2}
+\caption{S$_{11}$ and S$_{21}$ predictions (left axis) and absolute error in dB (right axis) at $\varepsilon_r = 2.196$ (held-out).}\label{fig:uncert2}
 \end{figure}
 
 \section{Pipeline Overview}
