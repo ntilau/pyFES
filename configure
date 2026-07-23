@@ -25,7 +25,7 @@ fi
 
 echo "Installing package + dependencies ..."
 "$VENV/bin/pip" install --quiet --upgrade pip
-"$VENV/bin/pip" install --quiet -e "$HERE"
+"$VENV/bin/pip" install --quiet -e "$HERE[viz]"
 "$VENV/bin/pip" install --quiet pytest
 
 # 2. Optional extras
