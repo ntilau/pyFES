@@ -12,5 +12,6 @@ from .capacitive import coaxial_capacitance, capacitive_clearance
 from .circulator import circulator, circulator_imp, circulator_ddschur
 from .scattering import scattering_dd, scattering_dd_iterative, scattering_full_field
 from .filter_dnngp import (
-    bilateral_filter_dnngp, BilateralFilterDNNGP, plot_surrogate
+    bilateral_filter_dnngp, BilateralFilterDNNGP, plot_surrogate,
+    adaptive_lhs_bilateral_filter,
 )

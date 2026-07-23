@@ -904,6 +904,370 @@ def bilateral_filter_dnngp(n_epsr=10, n_freqs=81, n_epochs=500,
     return model, metrics
 
 
+# ──────────────────────────────────────────────
+# Adaptive LHS sampling
+# ──────────────────────────────────────────────
+
+
+def _sequential_lhs_1d(existing, n_batch, bounds=(2.0, 2.2), seed=None):
+    """Sequential 1D Latin Hypercube Sampling avoiding existing points.
+
+    Partitions the *unoccupied* region of [lo, hi] into ``n_batch``
+    equal-width intervals and samples one point uniformly from each
+    interval — true LHS stratification applied to the remaining space.
+
+    Parameters
+    ----------
+    existing : array-like or None
+        Points already selected (occupied).
+    n_batch : int
+        Number of new points to draw.
+    bounds : tuple
+        (lo, hi) of the parameter space.
+    seed : int or None
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    ndarray, shape (min(n_batch, available),)
+        New parameter values.
+    """
+    lo, hi = bounds
+    rng = np.random.RandomState(seed)
+
+    existing = np.sort(np.atleast_1d(existing).ravel()) if (
+        existing is not None and len(np.atleast_1d(existing).ravel()) > 0
+    ) else np.array([])
+
+    # Pure LHS over the full range when nothing is occupied yet
+    if len(existing) == 0:
+        edges = np.linspace(lo, hi, n_batch + 1)
+        return edges[:-1] + rng.uniform(size=n_batch) * (edges[1] - edges[0])
+
+    # Build the list of unoccupied gaps
+    pts = np.concatenate([[lo], existing, [hi]])
+    gaps = [(pts[i], pts[i + 1]) for i in range(len(pts) - 1) if pts[i + 1] > pts[i]]
+
+    if not gaps:
+        return np.array([])
+
+    total_width = sum(g[1] - g[0] for g in gaps)
+    if total_width < 1e-14:
+        return np.array([])
+
+    # Divide total unoccupied width into n_batch equal segments
+    seg_width = total_width / n_batch
+    batch = []
+    for i in range(n_batch):
+        offset = (i + rng.uniform()) * seg_width
+        cum = 0.0
+        for gs, ge in gaps:
+            gw = ge - gs
+            if offset <= cum + gw:
+                pt = gs + (offset - cum)
+                batch.append(np.clip(pt, gs + 1e-12, ge - 1e-12))
+                break
+            cum += gw
+    return np.array(batch)
+
+
+def adaptive_lhs_bilateral_filter(
+    epsr_range=(2.0, 2.2),
+    freq_range=(138e9, 158e9),
+    n_freqs=81,
+    n_test=5,
+    n_initial=5,
+    batch_size=5,
+    n_epochs=500,
+    target_rel_error=1.0,
+    max_n_epsr=100,
+    data_dir="./data",
+    plot=True,
+    random_seed=42,
+    cache_file="adaptive_dnngp_data.npz",
+    save_model="adaptive_dnngp.pt",
+):
+    """Adaptive DNN-GP surrogate training with LHS-driven εᵣ sampling.
+
+    Starts with ``n_initial`` Latin Hypercube samples of εᵣ, then
+    iteratively adds ``batch_size`` new εᵣ values (also via LHS on
+    the unoccupied region), retrains the surrogate, and checks relative
+    error against a permanently held-out test set of ``n_test`` εᵣ
+    values.  Stops when both S₁₁ and S₂₁ relative error fall below
+    ``target_rel_error`` (default 1 %).
+
+    Parameters
+    ----------
+    epsr_range : tuple
+        (min, max) substrate permittivity range.
+    freq_range : tuple
+        (start, stop) sweep range in Hz.
+    n_freqs : int
+        Frequency points per εᵣ value.
+    n_test : int
+        Number of εᵣ values permanently held out for evaluation.
+    n_initial : int
+        Initial LHS batch size.
+    batch_size : int
+        εᵣ values added per adaptive iteration.
+    n_epochs : int
+        Training epochs per model per iteration.
+    target_rel_error : float
+        Relative error threshold (%) for convergence (both S₁₁ and S₂₁).
+    max_n_epsr : int
+        Hard limit on total εᵣ values (training + test) before giving up.
+    data_dir : str
+        Path to mesh data files.
+    plot : bool
+        Save convergence plot and final validation figure.
+    random_seed : int
+        Seed for reproducibility.
+    cache_file : str or None
+        Path to save/restore accumulated FEM data (.npz).
+    save_model : str or None
+        Path to save final trained model.
+
+    Returns
+    -------
+    model : BilateralFilterDNNGP
+        Final trained surrogate.
+    history : list of dict
+        Metrics after each iteration.
+    """
+    lo_epsr, hi_epsr = epsr_range
+
+    # ── 1. Fixed test set (evenly spread, never trained on) ──
+    test_epsr = np.linspace(lo_epsr, hi_epsr, n_test + 2)[1:-1]  # exclude boundaries
+    n_test = len(test_epsr)
+
+    # ── 2. Generate test data ──
+    print("=" * 60)
+    print("Generating held-out test set "
+          f"({n_test} εᵣ × {n_freqs} freq = {n_test * n_freqs} samples)...")
+    X_test, s11_test, s21_test = generate_data(
+        epsr_values=test_epsr, n_freqs=n_freqs,
+        freq_range=freq_range, data_dir=data_dir, verbose=False,
+    )
+    print(f"  Test set: {len(X_test)} samples, εᵣ ∈ [{test_epsr[0]:.4f}, {test_epsr[-1]:.4f}]")
+
+    # ── 3. Accumulators ──
+    train_epsr_list = []      # εᵣ values used for training
+    X_train_acc = np.empty((0, 2))
+    s11_train_acc = np.empty(0, dtype=complex)
+    s21_train_acc = np.empty(0, dtype=complex)
+
+    history = []
+
+    print("=" * 60)
+    print("Adaptive LHS loop")
+    print(f"  initial batch  = {n_initial} εᵣ")
+    print(f"  batch size     = {batch_size} εᵣ")
+    print(f"  target error   = {target_rel_error}%")
+    print(f"  max εᵣ        = {max_n_epsr}")
+    print("=" * 60)
+
+    # ── 4. Initial batch ──
+    new_epsr = _sequential_lhs_1d(
+        existing=None, n_batch=n_initial,
+        bounds=epsr_range, seed=random_seed,
+    )
+    train_epsr_list.extend(new_epsr.tolist())
+
+    print(f"\nIteration 0 — initial {n_initial} εᵣ values")
+    Xi, s11i, s21i = generate_data(
+        epsr_values=new_epsr, n_freqs=n_freqs,
+        freq_range=freq_range, data_dir=data_dir,
+    )
+    X_train_acc = np.vstack([X_train_acc, Xi])
+    s11_train_acc = np.concatenate([s11_train_acc, s11i])
+    s21_train_acc = np.concatenate([s21_train_acc, s21i])
+
+    # ── 5. Adaptive loop ──
+    converged = False
+    iteration = 0
+
+    while not converged and len(train_epsr_list) < max_n_epsr:
+        # Combine train + test for the model (model splits internally via val_epsr)
+        X_all = np.vstack([X_train_acc, X_test])
+        s11_all = np.concatenate([s11_train_acc, s11_test])
+        s21_all = np.concatenate([s21_train_acc, s21_test])
+
+        n_total_epsr = len(np.unique(X_all[:, 0]))
+
+        # Train
+        model = BilateralFilterDNNGP(
+            feat_dim=64, n_epochs=n_epochs, verbose=True,
+        )
+        metrics = model.train(
+            X_all, s11_all, s21_all,
+            val_epsr=test_epsr, random_seed=random_seed,
+        )
+
+        # Record
+        entry = dict(
+            iteration=iteration,
+            n_epsr=n_total_epsr,
+            n_train_epsr=len(train_epsr_list),
+            n_test_epsr=n_test,
+            n_simulations=n_total_epsr * n_freqs,
+            **metrics,
+        )
+        history.append(entry)
+
+        s11_rel = metrics["s11_rel_pct"]
+        s21_rel = metrics["s21_rel_pct"]
+        converged = s11_rel < target_rel_error and s21_rel < target_rel_error
+
+        # Print summary
+        status = "✓ CONVERGED" if converged else "→ continuing"
+        print(f"\n  ── Iteration {iteration} summary ──")
+        print(f"     εᵣ values: {n_total_epsr} "
+              f"({len(train_epsr_list)} train + {n_test} test)")
+        print(f"     S11 rel error:  {s11_rel:.3f}%  "
+              f"{'✓' if s11_rel < target_rel_error else '✗'}")
+        print(f"     S21 rel error:  {s21_rel:.3f}%  "
+              f"{'✓' if s21_rel < target_rel_error else '✗'}")
+        print(f"     {status}")
+        print()
+
+        if converged:
+            break
+
+        # Select next batch via sequential LHS
+        iteration += 1
+        if len(train_epsr_list) + batch_size > max_n_epsr:
+            batch_size_actual = max_n_epsr - len(train_epsr_list)
+        else:
+            batch_size_actual = batch_size
+
+        if batch_size_actual <= 0:
+            break
+
+        existing_arr = np.array(train_epsr_list)
+        new_epsr = _sequential_lhs_1d(
+            existing=existing_arr, n_batch=batch_size_actual,
+            bounds=epsr_range, seed=random_seed + iteration,
+        )
+        train_epsr_list.extend(new_epsr.tolist())
+
+        print(f"Iteration {iteration} — adding {len(new_epsr)} εᵣ values")
+        Xi, s11i, s21i = generate_data(
+            epsr_values=new_epsr, n_freqs=n_freqs,
+            freq_range=freq_range, data_dir=data_dir,
+        )
+        X_train_acc = np.vstack([X_train_acc, Xi])
+        s11_train_acc = np.concatenate([s11_train_acc, s11i])
+        s21_train_acc = np.concatenate([s21_train_acc, s21i])
+
+        # Cache accumulated data
+        if cache_file:
+            np.savez(cache_file,
+                     X_train=X_train_acc, s11_train=s11_train_acc, s21_train=s21_train_acc,
+                     X_test=X_test, s11_test=s11_test, s21_test=s21_test,
+                     test_epsr=test_epsr)
+
+    # ── 6. Final output ──
+    print("=" * 60)
+    print("Adaptive LHS complete")
+    print(f"  Total εᵣ values: {len(np.unique(X_all[:, 0]))}")
+    print(f"  Iterations:      {len(history)}")
+    print(f"  FEM simulations: {len(X_all)}")
+    print(f"  Converged:       {'yes' if converged else 'no (reached max)'}")
+    print(f"  Final S11 rel:   {history[-1]['s11_rel_pct']:.3f}%")
+    print(f"  Final S21 rel:   {history[-1]['s21_rel_pct']:.3f}%")
+    print("=" * 60)
+
+    if save_model:
+        model.save(save_model)
+        print(f"Saved model to {save_model}")
+
+    # ── 7. Convergence plot ──
+    if plot:
+        _plot_adaptive_convergence(history, target_rel_error, epsr_range)
+
+    # ── 8. Final validation plot ──
+    if plot:
+        s11_pred, s21_pred = model.predict(X_test)
+        plot_results(
+            X_test[:, 1], s11_test, s21_test,
+            s11_pred, s21_pred,
+            X_test[:, 0], val_epsr=test_epsr,
+            path="adaptive_dnngp_results.png",
+            title_suffix=(
+                f" (adaptive LHS: {len(train_epsr_list)} train εᵣ, "
+                f"{len(history)} iters)"
+            ),
+        )
+
+    return model, history
+
+
+def _plot_adaptive_convergence(history, target_rel_error, epsr_range):
+    """Plot convergence history of adaptive LHS loop."""
+    import matplotlib.pyplot as plt
+
+    iters = [h["iteration"] for h in history]
+    n_epsr = [h["n_epsr"] for h in history]
+    n_sim = [h["n_simulations"] for h in history]
+    s11_rel = [h["s11_rel_pct"] for h in history]
+    s21_rel = [h["s21_rel_pct"] for h in history]
+    s11_rmse = [h["s11_rmse"] for h in history]
+    s21_rmse = [h["s21_rmse"] for h in history]
+    s11_phase = [h["s11_phase_deg"] for h in history]
+    s21_phase = [h["s21_phase_deg"] for h in history]
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+    # ── Top left: relative error vs εᵣ count ──
+    ax = axes[0, 0]
+    ax.plot(n_epsr, s11_rel, "o-", color="#d62728", label="S₁₁ rel error", lw=2)
+    ax.plot(n_epsr, s21_rel, "s-", color="#2ca02c", label="S₂₁ rel error", lw=2)
+    ax.axhline(target_rel_error, color="gray", ls="--", lw=1,
+               label=f"target {target_rel_error}%")
+    ax.set_xlabel("Number of εᵣ values")
+    ax.set_ylabel("Relative error (%)")
+    ax.set_title("Convergence: relative error")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # ── Top right: RMSE ──
+    ax = axes[0, 1]
+    ax.plot(n_epsr, s11_rmse, "o-", color="#d62728", label="S₁₁ RMSE", lw=2)
+    ax.plot(n_epsr, s21_rmse, "s-", color="#2ca02c", label="S₂₁ RMSE", lw=2)
+    ax.set_xlabel("Number of εᵣ values")
+    ax.set_ylabel("RMSE")
+    ax.set_title("Convergence: RMSE")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # ── Bottom left: phase error ──
+    ax = axes[1, 0]
+    ax.plot(n_epsr, s11_phase, "o-", color="#d62728", label="S₁₁ phase (°)", lw=2)
+    ax.plot(n_epsr, s21_phase, "s-", color="#2ca02c", label="S₂₁ phase (°)", lw=2)
+    ax.set_xlabel("Number of εᵣ values")
+    ax.set_ylabel("Phase error (deg)")
+    ax.set_title("Convergence: phase error")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # ── Bottom right: error vs simulations (cost-awareness) ──
+    ax = axes[1, 1]
+    ax.plot(n_sim, s11_rel, "o-", color="#d62728", label="S₁₁ rel error", lw=2)
+    ax.plot(n_sim, s21_rel, "s-", color="#2ca02c", label="S₂₁ rel error", lw=2)
+    ax.axhline(target_rel_error, color="gray", ls="--", lw=1)
+    ax.set_xlabel("FEM simulations (εᵣ × freq)")
+    ax.set_ylabel("Relative error (%)")
+    ax.set_title("Error vs simulation cost")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    fig.suptitle("Adaptive LHS Convergence", fontsize=14, fontweight="bold")
+    plt.tight_layout()
+    plt.savefig("adaptive_convergence.png", dpi=150, bbox_inches="tight")
+    print("Saved adaptive_convergence.png")
+    plt.close()
+
+
 def plot_surrogate(path="bilat_dnngp.pt", data="bilat_dnngp_data.npz",
                    output="bilat_surrogate_plot.png", mat_file=None):
     """Plot a trained surrogate model's predictions against ground truth.
